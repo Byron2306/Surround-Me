@@ -1,0 +1,1202 @@
+FOR <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>SURROUND ME</title>
+    <!-- Title fonts: Bebas Neue (display) + Montserrat (subtitle) + existing blackletter -->
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Montserrat:wght@300;400;600&family=UnifrakturCook:wght@700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            background: #0a0908; 
+            overflow: hidden; 
+            font-family: 'Georgia', 'Times New Roman', serif;
+            cursor: default;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        canvas { display: block; }
+        
+        /* ============================================================
+           TITLE SCREEN — Dark Souls / Elden Ring cinematic
+           ============================================================ */
+        #title-screen {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: #020202;
+            z-index: 200;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 2.5s ease;
+        }
+        #title-screen.fade { opacity: 0; pointer-events: none; }
+        
+        #title-bg-img {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            object-fit: cover; /* fill and crop to cover entire area */
+            object-position: center center;
+            background-color: #020202; /* letterbox fill for empty areas */
+            z-index: 0;
+            opacity: 0;
+            animation: bgFadeIn 5s ease-out forwards;
+            animation-delay: 0.5s;
+            filter: brightness(0.86) contrast(1.08) saturate(0.9);
+        }
+        @keyframes bgFadeIn {
+            0% { opacity: 0; transform: scale(1.00); filter: brightness(0) contrast(1.08) saturate(0.9); }
+            40% { opacity: 0.85; filter: brightness(0.6) contrast(1.08) saturate(0.9); }
+            100% { opacity: 1; transform: scale(1); filter: brightness(0.86) contrast(1.08) saturate(0.9); }
+        }
+        
+        /* remove any overlay gradient on title screen */
+        #title-overlay {
+            /* no background, purely transparent */
+            background: none !important;
+        }
+        
+        #title-bg-canvas {
+            display: none !important; /* hide the animated canvas entirely */
+        }
+        
+        #title-content {
+            position: relative;
+            z-index: 3;
+            text-align: center;
+            margin-top: -8vh;
+        }
+
+        /* remove backdrop box behind title text */
+        #title-content::before {
+            content: '';
+            background: none !important;
+            /* keep invisible but occupy no space */
+            width: 0; height: 0; padding: 0; border: none;
+        }
+        #title-content { z-index: 4; }
+        #title-text { z-index: 5; position: relative; }
+        
+        #title-text {
+            font-family: 'Bebas Neue', 'UnifrakturCook', 'Georgia', serif;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: clamp(64px, 10.5vw, 160px);
+            color: rgba(0,0,0,0);
+            letter-spacing: 10px; /* increased tracking */
+            line-height: 1.02;
+            position: relative;
+            display: inline-block;
+            animation: titleReveal 5s ease-out forwards;
+            animation-delay: 2.5s;
+        }
+        @keyframes titleReveal {
+            0% { color: rgba(210,190,145,0); text-shadow: 0 0 80px rgba(180,140,80,0), 0 3px 12px rgba(0,0,0,0); letter-spacing: 24px; }
+            25% { color: rgba(210,190,145,0.3); text-shadow: 0 0 60px rgba(180,140,80,0.15), 0 3px 12px rgba(0,0,0,0.7); }
+            60% { color: rgba(220,195,150,0.75); text-shadow: 0 0 40px rgba(160,120,60,0.12), 0 3px 10px rgba(0,0,0,0.8); letter-spacing: 6px; }
+            100% { color: rgba(225,200,155,0.92); text-shadow: 0 0 25px rgba(140,100,50,0.15), 0 3px 8px rgba(0,0,0,0.9), 0 0 80px rgba(100,80,40,0.08); letter-spacing: 4px; }
+        }
+
+        /* Subtle distress/texture overlay for the title text (SVG noise via data URI) */
+        #title-text::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            mix-blend-mode: multiply;
+            /* noise overlay disabled to prevent tiny shaded blocks */
+            opacity: 0;
+            /* background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/><feComponentTransfer><feFuncA type='table' tableValues='0 0.6'/></feComponentTransfer></filter><rect width='100%' height='100%' filter='url(%23n)' fill='white'/></svg>"); */
+            background-size: 180% 180%;
+            transform: translateY(1px) scale(1.02);
+            transition: opacity 0.8s ease;
+        }
+        
+        #title-subtitle {
+            font-family: 'Montserrat', 'Source Sans Pro', 'Inter', 'Georgia', sans-serif;
+            font-weight: 300;
+            font-size: clamp(11px, 1.8vw, 16px);
+            letter-spacing: 6px;
+            text-transform: uppercase;
+            color: rgba(180,160,130,0);
+            margin-top: 22px;
+            animation: subtitleReveal 4s ease-out forwards;
+            animation-delay: 5.5s;
+        }
+        @keyframes subtitleReveal {
+            0% { color: rgba(180,160,130,0); text-shadow: 0 1px 8px rgba(0,0,0,0); }
+            100% { color: rgba(190,170,135,0.65); text-shadow: 0 2px 10px rgba(0,0,0,0.8); }
+        }
+        
+        #title-prompt {
+            font-family: 'Montserrat', 'Source Sans Pro', 'Inter', 'Georgia', sans-serif;
+            font-weight: 500; /* slightly heavier than subtitle */
+            font-size: 13px;
+            letter-spacing: 10px; /* increased tracking */
+            text-transform: uppercase;
+            color: rgba(180,160,130,0);
+            margin-top: 70px;
+            animation: promptPulse 3s ease-in-out infinite;
+            animation-delay: 8s;
+            cursor: pointer;
+            pointer-events: auto;
+            padding: 15px 35px;
+            border: 1px solid rgba(160,140,100,0);
+            transition: border-color 0.5s ease, background 0.5s ease;
+        }
+        #title-prompt:hover {
+            border-color: rgba(160,140,100,0.2);
+            background: rgba(160,140,100,0.03);
+        }
+        @keyframes promptPulse {
+            0%, 100% { color: rgba(190,170,130,0.4); text-shadow: 0 2px 8px rgba(0,0,0,0.7); border-color: rgba(160,140,100,0.05); }
+            50% { color: rgba(220,195,150,0.8); text-shadow: 0 2px 12px rgba(0,0,0,0.8), 0 0 25px rgba(140,110,60,0.12); border-color: rgba(160,140,100,0.12); }
+        }
+        
+        #title-version {
+            position: absolute;
+            bottom: 24px;
+            right: 24px;
+            font-size: 10px;
+            letter-spacing: 3px;
+            color: rgba(160,140,110,0.3);
+            text-shadow: 0 1px 6px rgba(0,0,0,0.6);
+            z-index: 3;
+        }
+        
+        #title-credit {
+            position: absolute;
+            bottom: 24px;
+            left: 24px;
+            font-size: 9px;
+            letter-spacing: 2px;
+            color: rgba(140,120,90,0.2);
+            text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+            z-index: 3;
+        }
+        
+        /* ============================================================
+           CONTROLS OVERLAY — Clearer, higher contrast
+           ============================================================ */
+        #controls-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(5,4,4,0.94);
+            z-index: 150;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 1.5s ease;
+        }
+        #controls-overlay.visible { display: flex; }
+        #controls-overlay.fade { opacity: 0; pointer-events: none; }
+        
+        #controls-title {
+            font-family: 'Georgia', serif;
+            font-size: 16px;
+            letter-spacing: 8px;
+            text-transform: uppercase;
+            color: rgba(180,155,120,0.6);
+            margin-bottom: 45px;
+            text-shadow: 0 1px 6px rgba(0,0,0,0.5);
+        }
+        
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            margin-bottom: 14px;
+            opacity: 0;
+            animation: controlFadeIn 0.8s ease forwards;
+        }
+        .control-row:nth-child(2) { animation-delay: 0.3s; }
+        .control-row:nth-child(3) { animation-delay: 0.5s; }
+        .control-row:nth-child(4) { animation-delay: 0.7s; }
+        .control-row:nth-child(5) { animation-delay: 0.9s; }
+        .control-row:nth-child(6) { animation-delay: 1.1s; }
+        .control-row:nth-child(7) { animation-delay: 1.3s; }
+        .control-row:nth-child(8) { animation-delay: 1.5s; }
+        .control-row:nth-child(9) { animation-delay: 1.7s; }
+        .control-row:nth-child(10) { animation-delay: 1.9s; }
+        .control-row:nth-child(11) { animation-delay: 2.1s; }
+        .control-row:nth-child(12) { animation-delay: 2.3s; }
+        .control-row:nth-child(13) { animation-delay: 2.5s; }
+        @keyframes controlFadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .control-key {
+            font-family: 'Georgia', serif;
+            font-size: 11px;
+            letter-spacing: 1px;
+            color: rgba(200,175,140,0.65);
+            min-width: 110px;
+            text-align: right;
+            padding: 4px 12px;
+            border-right: 1px solid rgba(120,100,70,0.25);
+        }
+        .control-desc {
+            font-family: 'Georgia', serif;
+            font-size: 10px;
+            letter-spacing: 1px;
+            color: rgba(150,130,105,0.5);
+            font-style: italic;
+        }
+        
+        #controls-dismiss {
+            font-family: 'Georgia', serif;
+            font-size: 10px;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: rgba(170,150,115,0.35);
+            margin-top: 45px;
+            cursor: pointer;
+            pointer-events: auto;
+            padding: 12px 24px;
+            animation: promptPulse 3s ease-in-out infinite;
+        }
+        
+        /* ============================================================
+           INVENTORY PANEL — Overhauled with item images — ZOOMED IN
+           ============================================================ */
+        #inventory-panel {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: min(680px, 94vw);
+            max-height: 88vh;
+            background: rgba(8,6,5,0.97);
+            border: 1px solid rgba(90,75,55,0.35);
+            border-top: 2px solid rgba(140,120,80,0.25);
+            z-index: 40;
+            display: none;
+            padding: 0;
+            overflow-y: auto;
+            pointer-events: auto;
+            box-shadow: 0 0 80px rgba(0,0,0,0.8), inset 0 0 40px rgba(0,0,0,0.3), 0 0 120px rgba(40,30,15,0.15);
+        }
+        #inventory-panel.visible { display: block; }
+        #inventory-panel::-webkit-scrollbar { width: 5px; }
+        #inventory-panel::-webkit-scrollbar-track { background: rgba(20,18,14,0.5); }
+        #inventory-panel::-webkit-scrollbar-thumb { background: rgba(80,65,50,0.5); border-radius: 2px; }
+        
+        .inv-header {
+            padding: 24px 30px 16px;
+            border-bottom: 1px solid rgba(70,58,45,0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .inv-header-left {
+            display: flex;
+            align-items: baseline;
+            gap: 14px;
+        }
+        #inv-title {
+            font-size: 16px;
+            letter-spacing: 6px;
+            text-transform: uppercase;
+            color: rgba(200,175,140,0.7);
+            font-family: 'Georgia', serif;
+        }
+        #inv-rank {
+            font-size: 11px;
+            letter-spacing: 2px;
+            color: rgba(160,140,110,0.45);
+            font-family: 'Georgia', serif;
+        }
+        #inv-close {
+            font-size: 11px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: rgba(140,115,85,0.45);
+            cursor: pointer;
+            padding: 6px 14px;
+            transition: color 0.3s ease, background 0.3s ease;
+            font-family: 'Georgia', serif;
+        }
+        #inv-close:hover { color: rgba(200,175,140,0.7); background: rgba(60,50,38,0.2); }
+        
+        /* Equipped section */
+        .inv-equipped {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            padding: 18px 30px;
+            border-bottom: 1px solid rgba(70,58,45,0.12);
+        }
+        .inv-equip-slot {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            background: rgba(20,17,14,0.5);
+            border: 1px solid rgba(60,50,40,0.18);
+            transition: background 0.3s ease, border-color 0.3s ease;
+            cursor: default;
+        }
+        .inv-equip-slot:hover {
+            background: rgba(35,30,24,0.5);
+            border-color: rgba(80,65,50,0.3);
+        }
+        .inv-equip-img {
+            width: 48px;
+            height: 48px;
+            object-fit: contain;
+            opacity: 0.85;
+            flex-shrink: 0;
+            image-rendering: auto;
+        }
+        .inv-equip-info {
+            min-width: 0;
+        }
+        .inv-equip-slot-label {
+            font-size: 9px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: rgba(120,105,80,0.4);
+            font-family: 'Georgia', serif;
+        }
+        .inv-equip-name {
+            font-size: 13px;
+            letter-spacing: 1px;
+            color: rgba(200,180,145,0.75);
+            font-family: 'Georgia', serif;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .inv-equip-desc {
+            font-size: 10px;
+            color: rgba(150,130,100,0.45);
+            font-style: italic;
+            font-family: 'Georgia', serif;
+        }
+        
+        .inv-section-label {
+            font-size: 11px;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: rgba(160,140,110,0.45);
+            padding: 14px 30px 6px;
+            font-family: 'Georgia', serif;
+        }
+        .inv-items-list {
+            padding: 0 30px 10px;
+        }
+        .inv-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 10px;
+            margin-bottom: 3px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            border: 1px solid transparent;
+        }
+        .inv-item:hover {
+            background: rgba(50,42,33,0.3);
+            border-color: rgba(70,58,45,0.18);
+        }
+        .inv-item-img {
+            width: 38px;
+            height: 38px;
+            object-fit: contain;
+            opacity: 0.75;
+            flex-shrink: 0;
+        }
+        .inv-item-icon {
+            font-size: 22px;
+            opacity: 0.5;
+            min-width: 38px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .inv-item-info {
+            min-width: 0;
+            flex: 1;
+        }
+        .inv-item-name {
+            font-size: 13px;
+            letter-spacing: 1px;
+            color: rgba(190,170,135,0.7);
+            font-family: 'Georgia', serif;
+        }
+        .inv-item-desc {
+            font-size: 10px;
+            color: rgba(140,120,90,0.45);
+            font-style: italic;
+            font-family: 'Georgia', serif;
+        }
+        .inv-item-weight {
+            font-size: 10px;
+            color: rgba(120,100,75,0.4);
+            font-family: 'Georgia', serif;
+            flex-shrink: 0;
+        }
+        .inv-empty {
+            font-size: 11px;
+            color: rgba(100,85,65,0.35);
+            font-style: italic;
+            padding: 10px 0;
+            font-family: 'Georgia', serif;
+        }
+        
+        /* Burden bar */
+        .inv-burden-section {
+            padding: 14px 30px 20px;
+        }
+        .inv-burden-label {
+            font-size: 10px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: rgba(130,110,85,0.45);
+            margin-bottom: 6px;
+            font-family: 'Georgia', serif;
+        }
+        #inv-burden-bar {
+            width: 100%;
+            height: 5px;
+            background: rgba(25,22,18,0.8);
+            border: 1px solid rgba(50,42,35,0.2);
+        }
+        #inv-burden-fill {
+            height: 100%;
+            background: rgba(120,95,140,0.55);
+            transition: width 0.5s ease;
+        }
+        
+        /* Gold display in inventory */
+        .inv-gold-display {
+            padding: 0 30px 10px;
+            font-size: 12px;
+            letter-spacing: 2px;
+            color: rgba(220,195,120,0.65);
+            font-family: 'Georgia', serif;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .inv-gold-display img {
+            width: 18px;
+            height: 18px;
+            opacity: 0.8;
+        }
+        
+        /* ============================================================
+           SKILL UPGRADE PANEL
+           ============================================================ */
+        #upgrade-panel {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: min(700px, 94vw);
+            max-height: 88vh;
+            background: rgba(8,6,5,0.97);
+            border: 1px solid rgba(100,85,55,0.35);
+            border-top: 2px solid rgba(180,150,80,0.25);
+            z-index: 42;
+            display: none;
+            padding: 0;
+            overflow-y: auto;
+            pointer-events: auto;
+            box-shadow: 0 0 80px rgba(0,0,0,0.8), inset 0 0 40px rgba(0,0,0,0.3), 0 0 120px rgba(60,45,15,0.12);
+        }
+        #upgrade-panel.visible { display: block; }
+        #upgrade-panel::-webkit-scrollbar { width: 5px; }
+        #upgrade-panel::-webkit-scrollbar-track { background: rgba(20,18,14,0.5); }
+        #upgrade-panel::-webkit-scrollbar-thumb { background: rgba(100,80,55,0.5); border-radius: 2px; }
+        
+        .upgrade-header {
+            padding: 24px 30px 16px;
+            border-bottom: 1px solid rgba(90,75,50,0.18);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #upgrade-title {
+            font-size: 16px;
+            letter-spacing: 6px;
+            text-transform: uppercase;
+            color: rgba(220,195,140,0.75);
+            font-family: 'Georgia', serif;
+        }
+        #upgrade-points {
+            font-size: 13px;
+            letter-spacing: 2px;
+            color: rgba(220,195,140,0.65);
+            font-family: 'Georgia', serif;
+        }
+        #upgrade-close {
+            font-size: 11px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: rgba(140,115,85,0.45);
+            cursor: pointer;
+            padding: 6px 14px;
+            transition: color 0.3s ease;
+            font-family: 'Georgia', serif;
+        }
+        #upgrade-close:hover { color: rgba(200,175,140,0.7); }
+        
+        .upgrade-section-label {
+            font-size: 12px;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: rgba(160,140,110,0.45);
+            padding: 16px 30px 8px;
+            font-family: 'Georgia', serif;
+        }
+        
+        .upgrade-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 10px 30px;
+            transition: background 0.3s ease;
+        }
+        .upgrade-row:hover {
+            background: rgba(40,34,26,0.35);
+        }
+        .upgrade-icon {
+            width: 48px;
+            height: 48px;
+            object-fit: contain;
+            opacity: 0.8;
+            flex-shrink: 0;
+        }
+        .upgrade-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .upgrade-name {
+            font-size: 14px;
+            letter-spacing: 1px;
+            color: rgba(200,180,145,0.75);
+            font-family: 'Georgia', serif;
+        }
+        .upgrade-desc {
+            font-size: 11px;
+            color: rgba(150,130,100,0.5);
+            font-style: italic;
+            font-family: 'Georgia', serif;
+            margin-top: 2px;
+        }
+        .upgrade-pips {
+            display: flex;
+            gap: 5px;
+            margin-top: 4px;
+        }
+        .upgrade-pip {
+            width: 12px;
+            height: 4px;
+            background: rgba(60,50,40,0.35);
+            border: 1px solid rgba(80,65,50,0.25);
+        }
+        .upgrade-pip.filled {
+            background: rgba(200,170,100,0.65);
+            border-color: rgba(200,170,100,0.35);
+        }
+        .upgrade-btn {
+            font-size: 11px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: rgba(200,175,130,0.65);
+            background: rgba(40,34,26,0.45);
+            border: 1px solid rgba(120,100,65,0.25);
+            padding: 6px 16px;
+            cursor: pointer;
+            font-family: 'Georgia', serif;
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+        }
+        .upgrade-btn:hover {
+            color: rgba(240,215,155,0.85);
+            background: rgba(60,50,38,0.55);
+            border-color: rgba(160,135,85,0.35);
+        }
+        .upgrade-btn.disabled {
+            opacity: 0.3;
+            cursor: default;
+            pointer-events: none;
+        }
+        .upgrade-btn.maxed {
+            color: rgba(140,120,90,0.45);
+            border-color: rgba(80,65,50,0.18);
+            cursor: default;
+            pointer-events: none;
+        }
+        
+        /* ============================================================
+           GAME HUD — Improved visibility
+           ============================================================ */
+        #ui-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            z-index: 10;
+            display: none;
+        }
+        #ui-overlay.visible { display: block; }
+        
+        /* OLD DOM greyline hidden — now canvas rendered */
+        #greyline-container { display: none !important; }
+        
+        /* OLD DOM stats hidden — now canvas rendered */
+        #stats-left { display: none !important; }
+        
+          /* OLD DOM skills bar hidden — now canvas rendered */
+          /* Allow potion quickslot to remain visible when desired by enabling the skills bar
+              (removed !important so scripts can toggle visibility). */
+        /* show the skills DOM bar so the potion quickslot is visible */
+        #skills-bar { display: flex; gap: 8px; position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 12; pointer-events: none; }
+        .skill-slot { pointer-events: auto; }
+        .skill-slot {
+            width: 34px; height: 34px; background: transparent; border: none;
+            display: flex; align-items: center; justify-content: center; flex-direction: column;
+            position: relative; transition: transform 0.3s ease, opacity 0.5s ease;
+        }
+        /* Potion quickslot adjustments */
+        #potion-slot { display:flex; align-items:center; gap:8px; padding:6px 10px; position: absolute; right: 220px; bottom: 0; z-index: 13; }
+        #potion-slot .potion-img { width:28px; height:28px; object-fit:contain; opacity:0.98; border-radius:4px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6)); }
+        #potion-slot .potion-info { display:flex; flex-direction:column; align-items:flex-start; margin-left:6px; }
+        #potion-slot .potion-label { font-size:11px; color:rgba(200,180,145,0.95); }
+        #potion-slot .potion-count { font-size:11px; color:rgba(180,160,130,0.88); }
+        #potion-slot .potion-key { margin-left:8px; padding-left:6px; font-size:11px; letter-spacing:2px; color:rgba(200,175,140,0.9); }
+        .skill-slot .key { font-size: 8px; color: rgba(160,140,110,0.35); font-family: 'Georgia', serif; position: absolute; bottom: -12px; letter-spacing: 1px; }
+        .skill-slot .icon { font-size: 18px; opacity: 0.6; transition: opacity 0.5s ease, transform 0.3s ease, filter 0.5s ease; filter: none; }
+        .skill-slot.ready .icon { opacity: 0.65; }
+        .skill-slot.strained .icon { opacity: 0.4; filter: blur(0.5px); }
+        .skill-slot.warped .icon { opacity: 0.3; filter: blur(1px); transform: scale(0.92) skewX(-2deg); }
+        .skill-slot.on-cooldown .icon { opacity: 0.18; }
+        .skill-slot .cd-overlay { display: none; }
+        
+        /* OLD DOM psych stats hidden — now canvas rendered */
+        #stats-right { display: none !important; }
+        
+        #area-name {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 28px; letter-spacing: 10px; text-transform: uppercase;
+            color: rgba(180,155,120,0); font-family: 'Georgia', serif;
+            z-index: 30; pointer-events: none; transition: color 2s ease;
+            text-shadow: 0 2px 12px rgba(0,0,0,0.7);
+        }
+        #area-name.visible { color: rgba(200,175,140,0.6); }
+        #area-name.fade { color: rgba(180,155,120,0); }
+        #area-subtitle { font-size: 11px; letter-spacing: 5px; display: block; margin-top: 10px; color: inherit; opacity: 0.6; }
+        
+        #damage-flash {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(100,30,20,0); pointer-events: none;
+            z-index: 25; transition: background 0.1s ease;
+        }
+        
+        #interact-prompt {
+            position: fixed; bottom: 170px; left: 50%; transform: translateX(-50%);
+            font-size: 11px; letter-spacing: 3px; color: rgba(180,155,120,0);
+            font-family: 'Georgia', serif; z-index: 30; transition: color 0.3s ease;
+            text-transform: uppercase;
+            text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+        }
+        #interact-prompt.visible { color: rgba(200,175,140,0.7); }
+
+        /* NPC dialogue box */
+        #dialogue-box {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: min(550px, 88vw);
+            background: rgba(10,8,6,0.94);
+            border: 1px solid rgba(80,65,50,0.2);
+            border-top: 2px solid rgba(120,100,70,0.15);
+            padding: 18px 24px;
+            z-index: 35;
+            display: none;
+            pointer-events: auto;
+        }
+        #dialogue-box.visible { display: block; }
+        #dialogue-speaker {
+            font-size: 10px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: rgba(200,175,140,0.6);
+            margin-bottom: 8px;
+        }
+        #dialogue-text {
+            font-size: 12px;
+            line-height: 1.7;
+            color: rgba(170,150,120,0.65);
+            font-style: italic;
+        }
+        #dialogue-dismiss {
+            font-size: 8px;
+            letter-spacing: 2px;
+            color: rgba(120,100,75,0.3);
+            text-align: right;
+            margin-top: 10px;
+            text-transform: uppercase;
+        }
+
+        /* ============================================================
+           SHOP PANEL — Sable's Mending Trade
+           ============================================================ */
+        #shop-panel {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: min(720px, 94vw);
+            max-height: 88vh;
+            background: rgba(8,6,5,0.97);
+            border: 1px solid rgba(90,70,100,0.35);
+            border-top: 2px solid rgba(120,90,140,0.25);
+            z-index: 44;
+            display: none;
+            padding: 0;
+            overflow-y: auto;
+            pointer-events: auto;
+            box-shadow: 0 0 80px rgba(0,0,0,0.8), inset 0 0 40px rgba(0,0,0,0.3), 0 0 100px rgba(60,30,80,0.1);
+        }
+        #shop-panel.visible { display: block; }
+        #shop-panel::-webkit-scrollbar { width: 5px; }
+        #shop-panel::-webkit-scrollbar-track { background: rgba(20,18,14,0.5); }
+        #shop-panel::-webkit-scrollbar-thumb { background: rgba(80,60,90,0.5); border-radius: 2px; }
+        
+        .shop-header {
+            padding: 24px 30px 16px;
+            border-bottom: 1px solid rgba(80,60,90,0.18);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .shop-header-left {
+            display: flex;
+            align-items: baseline;
+            gap: 14px;
+        }
+        #shop-title {
+            font-size: 16px;
+            letter-spacing: 6px;
+            text-transform: uppercase;
+            color: rgba(180,150,200,0.7);
+            font-family: 'Georgia', serif;
+        }
+        #shop-gold {
+            font-size: 13px;
+            letter-spacing: 2px;
+            color: rgba(220,195,120,0.65);
+            font-family: 'Georgia', serif;
+        }
+        #shop-close {
+            font-size: 11px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: rgba(140,115,85,0.45);
+            cursor: pointer;
+            padding: 6px 14px;
+            transition: color 0.3s ease;
+            font-family: 'Georgia', serif;
+        }
+        #shop-close:hover { color: rgba(200,175,140,0.7); }
+        
+        .shop-section-label {
+            font-size: 12px;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: rgba(160,140,170,0.45);
+            padding: 16px 30px 8px;
+            font-family: 'Georgia', serif;
+            border-bottom: 1px solid rgba(60,50,70,0.1);
+        }
+        
+        .shop-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 10px 30px;
+            transition: background 0.3s ease;
+            border-bottom: 1px solid rgba(40,35,50,0.08);
+        }
+        .shop-item:hover {
+            background: rgba(40,34,48,0.3);
+        }
+        .shop-item-img {
+            width: 44px;
+            height: 44px;
+            object-fit: contain;
+            opacity: 0.8;
+            flex-shrink: 0;
+        }
+        .shop-item-icon {
+            font-size: 24px;
+            opacity: 0.5;
+            min-width: 44px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .shop-item-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .shop-item-name {
+            font-size: 14px;
+            letter-spacing: 1px;
+            color: rgba(200,180,160,0.75);
+            font-family: 'Georgia', serif;
+        }
+        .shop-item-desc {
+            font-size: 10px;
+            color: rgba(150,130,120,0.45);
+            font-style: italic;
+            font-family: 'Georgia', serif;
+            margin-top: 1px;
+        }
+        .shop-item-stats {
+            font-size: 10px;
+            color: rgba(160,190,140,0.55);
+            font-family: 'Georgia', serif;
+            margin-top: 2px;
+        }
+        .shop-item-action {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+        .shop-item-price {
+            font-size: 13px;
+            color: rgba(220,195,120,0.7);
+            font-family: 'Georgia', serif;
+            letter-spacing: 1px;
+        }
+        .shop-btn {
+            font-size: 10px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: rgba(200,175,150,0.65);
+            background: rgba(40,34,26,0.5);
+            border: 1px solid rgba(120,100,80,0.25);
+            padding: 5px 14px;
+            cursor: pointer;
+            font-family: 'Georgia', serif;
+            transition: all 0.3s ease;
+        }
+        .shop-btn:hover {
+            color: rgba(240,215,170,0.85);
+            background: rgba(60,50,40,0.55);
+            border-color: rgba(160,140,100,0.35);
+        }
+        .shop-btn.disabled {
+            opacity: 0.3;
+            cursor: default;
+            pointer-events: none;
+        }
+        .shop-btn.sell-btn {
+            border-color: rgba(130,90,80,0.25);
+        }
+        .shop-btn.sell-btn:hover {
+            border-color: rgba(180,110,90,0.35);
+        }
+        .shop-rare .shop-item-name { color: rgba(180,140,255,0.85); }
+        .shop-uncommon .shop-item-name { color: rgba(140,200,255,0.8); }
+        .shop-empty {
+            font-size: 12px;
+            color: rgba(100,85,75,0.35);
+            font-style: italic;
+            padding: 16px 30px;
+            font-family: 'Georgia', serif;
+        }
+
+        #loading-screen {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: #0a0908; display: flex; align-items: center; justify-content: center;
+            flex-direction: column; z-index: 100; transition: opacity 1.5s ease;
+        }
+        #loading-screen.fade { opacity: 0; pointer-events: none; }
+        #loading-text { font-size: 12px; letter-spacing: 5px; color: rgba(180,155,120,0.5); font-family: 'Georgia', serif; text-transform: uppercase; }
+        #loading-subtext { font-size: 10px; letter-spacing: 3px; color: rgba(150,130,100,0.35); font-family: 'Georgia', serif; margin-top: 14px; font-style: italic; }
+        /* Sound enable button (bottom-right) — explicit user interaction required for audio */
+        #sound-button {
+            position: absolute;
+            bottom: 18px;
+            right: 18px;
+            z-index: 550;
+            pointer-events: auto;
+            background: rgba(18,16,14,0.72);
+            color: rgba(220,200,160,0.95);
+            border: 1px solid rgba(120,100,70,0.25);
+            padding: 8px 12px;
+            font-family: 'Montserrat', 'Georgia', serif;
+            font-size: 12px;
+            letter-spacing: 1px;
+            text-transform: none;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.6);
+        }
+        #sound-button.on { background: rgba(28,26,22,0.92); border-color: rgba(180,150,100,0.45); }
+        /* Demo controls on title screen */
+        #title-demo-buttons {
+            position: absolute;
+            top: 60%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            gap: 10px;
+            z-index: 551;
+        }
+        #title-demo-buttons button {
+            background: rgba(20,18,16,0.8);
+            color: rgba(220,200,160,0.95);
+            border: 1px solid rgba(120,100,70,0.25);
+            padding: 6px 12px;
+            font-family: 'Montserrat', 'Georgia', serif;
+            font-size: 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            box-shadow: 0 3px 12px rgba(0,0,0,0.5);
+        }
+        #title-demo-buttons button:hover { background: rgba(28,26,22,0.9); }
+        /* Reset button (developer shortcut) */
+        #reset-button {
+            position: absolute;
+            bottom: 18px;
+            right: 118px;
+            z-index: 550;
+            pointer-events: auto;
+            background: rgba(30,20,20,0.6);
+            color: rgba(220,180,160,0.9);
+            border: 1px solid rgba(120,70,60,0.18);
+            padding: 8px 10px;
+            font-size: 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.45);
+        }
+        #reset-button:hover { background: rgba(40,28,26,0.82); }
+        /* Debug: force a simulated viewport (useful for testing 1920x1080 layout) */
+        #debug-1920 {
+            position: absolute; bottom: 18px; right: 218px; z-index: 550; pointer-events: auto;
+            background: rgba(28,28,36,0.6); color: rgba(220,220,220,0.9); border: 1px solid rgba(120,120,140,0.08);
+            padding: 8px 10px; font-size: 12px; border-radius: 6px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.45);
+        }
+        #debug-1920.active { background: rgba(60,36,26,0.92); }
+        /* settings overlay */
+        #settings-overlay {
+            position: absolute; top:0; left:0; right:0; bottom:0;
+            background: rgba(0,0,0,0.75);
+            z-index: 1000;
+            display: flex; align-items: center; justify-content: center;
+        }
+        #settings-box {
+            background: rgba(20,20,25,0.95);
+            padding: 24px; border-radius: 8px;
+            width: 320px; color: #ddd; font-family: 'Montserrat', sans-serif;
+        }
+        #settings-title { font-size: 18px; margin-bottom: 12px; text-align:center; }
+        .setting-row { margin: 8px 0; display:flex; align-items:center; justify-content:space-between; }
+        .setting-row label { flex:1; font-size:14px; }
+        .setting-row input[type=range] { flex:2; }
+        .setting-row button { flex:none; padding:4px 8px; font-size:12px; }
+    </style>
+</head>
+<body>
+    <!-- TITLE SCREEN -->
+    <div id="title-screen">
+        <img id="title-bg-img" src="./title.png" alt="" />
+        <div id="title-overlay"></div>
+        <canvas id="title-bg-canvas"></canvas>
+        <div id="title-content">
+            <div id="title-text">Surround Me</div>
+            <div id="title-subtitle">neither extreme is evil — both are pathological when fixed</div>
+            <div id="title-prompt" onclick="document.dispatchEvent(new CustomEvent('title-start'))">begin</div>
+            <div id="title-demo-buttons">
+                <button id="demo-neutral">Neutral</button>
+                <button id="demo-compulsion">Compulsion</button>
+                <button id="demo-restraint">Restraint</button>
+            </div>
+        </div>
+        <div id="title-version">area i — the verge</div>
+        <div id="title-credit">rosebud</div>
+        <button id="sound-button" aria-label="Enable sound">Click for sound</button>
+    </div>
+    
+    <!-- SETTINGS OVERLAY (Esc menu) -->
+    <div id="settings-overlay" style="display:none">
+        <div id="settings-box">
+            <div id="settings-title">Audio Settings</div>
+            <div class="setting-row"><label>Bass Volume</label><input type="range" id="setting-bass" min="0" max="3" step="0.01"></div>
+            <div class="setting-row"><label>Beat Volume</label><input type="range" id="setting-beat" min="0" max="3" step="0.01"></div>
+            <div class="setting-row"><label>Melody Volume</label><input type="range" id="setting-melody" min="0" max="3" step="0.01"></div>
+            <div class="setting-row"><label>Pitch Warp</label><input type="range" id="setting-pitch" min="0" max="3" step="0.01"></div>
+            <div class="setting-row"><label>Pitch Range</label><input type="range" id="setting-pitchfactor" min="0.5" max="2" step="0.01"></div>
+            <div class="setting-row"><label>Bass Warp</label><input type="range" id="setting-basswarp" min="0" max="3" step="0.01"></div>
+            <div class="setting-row"><label>Neutral Harmony</label><input type="range" id="setting-harmony" min="0" max="2" step="0.01"></div>
+            <div class="setting-row"><label>Tempo Factor</label><input type="range" id="setting-tempo" min="0.25" max="4" step="0.01"></div>
+            <div class="setting-row"><label>Neutral BPM</label>
+                <input type="range" id="setting-neutralbpm" min="60" max="140" step="1">
+                <span id="neutralbpm-value">100</span>
+            </div>
+            <div class="setting-row"><label>Title Volume</label><input type="range" id="setting-title" min="0" max="2" step="0.01"></div>
+            <div class="setting-row"><button id="btn-export-config">Export Config</button> <button id="btn-clear-config">Reset</button></div>
+            <div class="setting-row">
+                <button id="demo-neutral">Neutral</button>
+                <button id="demo-compulsion">Compulsion</button>
+                <button id="demo-restraint">Restraint</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTROLS OVERLAY -->
+    <div id="controls-overlay">
+        <div id="controls-title">Controls</div>
+        <div class="control-row"><span class="control-key">W A S D</span><span class="control-desc">Move — direction shapes how the world reads you</span></div>
+        <div class="control-row"><span class="control-key">Left Click</span><span class="control-desc">Attack — action pushes toward compulsion</span></div>
+        <div class="control-row"><span class="control-key">1 / Space / Q</span><span class="control-desc">Predatory Motion — dash through enemies</span></div>
+        <div class="control-row"><span class="control-key">2 / E</span><span class="control-desc">Adaptive Snare — traps weaken with repetition</span></div>
+        <div class="control-row"><span class="control-key">3 / R</span><span class="control-desc">Reclamation — slow growth, not domination</span></div>
+        <div class="control-row"><span class="control-key">4 / F</span><span class="control-desc">Attunement — stillness as perception, not escape</span></div>
+        <div class="control-row"><span class="control-key">5</span><span class="control-desc">Burden Shift — pain doesn't vanish, it moves</span></div>
+        <div class="control-row"><span class="control-key">6</span><span class="control-desc">Shadow Acknowledgement — integration, not indulgence</span></div>
+        <div class="control-row"><span class="control-key">E</span><span class="control-desc">Interact — speak to the inhabitants</span></div>
+        <div class="control-row"><span class="control-key">I / Tab</span><span class="control-desc">Inventory — what you carry weighs on you</span></div>
+        <div class="control-row"><span class="control-key">F11</span><span class="control-desc">Fullscreen — no browser, no escape</span></div>
+        <div class="control-row"><span class="control-key">Esc</span><span class="control-desc">Close menus</span></div>
+        <div id="controls-dismiss" onclick="document.dispatchEvent(new CustomEvent('controls-dismiss'))">press any key to continue</div>
+    </div>
+    
+    <!-- LOADING SCREEN -->
+    <div id="loading-screen" style="display:none">
+        <div id="loading-text">The Holdfast</div>
+        <div id="loading-subtext">you can rest here — but not forever</div>
+    </div>
+    
+    <!-- GAME HUD -->
+    <div id="ui-overlay">
+        <div id="stats-left">
+            <div class="stat-bar-container">
+                <div class="stat-label" id="health-label">Integrity</div>
+                <div class="stat-bar-bg"><div class="stat-bar-fill health-fill" id="health-bar" style="width:100%"></div></div>
+            </div>
+            <div class="stat-bar-container">
+                <div class="stat-label" id="stamina-label">Stamina</div>
+                <div class="stat-bar-bg"><div class="stat-bar-fill stamina-fill" id="stamina-bar" style="width:100%"></div></div>
+            </div>
+            <div class="stat-bar-container">
+                <div class="stat-label" id="burden-label">Burden</div>
+                <div class="stat-bar-bg"><div class="stat-bar-fill burden-fill" id="burden-bar" style="width:20%"></div></div>
+            </div>
+        </div>
+        <div id="stats-right">
+            <div class="psych-stat active" id="stat-agency">AGENCY</div>
+            <div class="psych-stat active" id="stat-awareness">AWARENESS</div>
+            <div class="psych-stat active" id="stat-precision">PRECISION</div>
+            <div class="psych-stat" id="stat-adaptability">ADAPTABILITY</div>
+            <div class="psych-stat" id="stat-integrity">INTEGRITY</div>
+            <div class="psych-stat" id="stat-burden">BURDEN</div>
+        </div>
+        <div id="skills-bar">
+            <div class="skill-slot ready" id="skill-1"><span class="icon">🗡</span><span class="key">1</span></div>
+            <div class="skill-slot ready" id="skill-2"><span class="icon">⬡</span><span class="key">2</span></div>
+            <div class="skill-slot ready" id="skill-3"><span class="icon">⌾</span><span class="key">3</span></div>
+            <div class="skill-slot ready" id="skill-4"><span class="icon">◈</span><span class="key">4</span></div>
+            <div class="skill-slot ready" id="skill-5"><span class="icon">⊘</span><span class="key">5</span></div>
+            <div class="skill-slot ready" id="skill-6"><span class="icon">◐</span><span class="key">6</span></div>
+            <!-- Potion quickslot (C) -->
+            <div class="skill-slot ready" id="potion-slot">
+                <img id="potion-icon" src="" alt="potion" class="potion-img">
+                <div class="potion-info">
+                    <div class="potion-label">Potion</div>
+                    <div id="potion-count" class="potion-count">0/5</div>
+                </div>
+                <span class="key potion-key">C</span>
+            </div>
+        </div>
+        <div id="greyline-container">
+            <span class="greyline-label left">restraint</span>
+            <span class="greyline-label center">greyline</span>
+            <span class="greyline-label right">compulsion</span>
+            <canvas id="greyline-fracture" width="360" height="6"></canvas>
+            <div id="greyline-center"></div>
+            <div id="greyline-bar" style="left:50%"></div>
+        </div>
+    </div>
+    
+    <!-- INVENTORY — Overhauled -->
+    <div id="inventory-panel">
+        <div class="inv-header">
+            <div class="inv-header-left">
+                <div id="inv-title">Burden</div>
+                <div id="inv-rank"></div>
+            </div>
+            <div id="inv-close" onclick="document.dispatchEvent(new CustomEvent('inv-close'))">close [I]</div>
+        </div>
+        <div class="inv-gold-display" id="inv-gold-display">0 gold</div>
+        <div class="inv-section-label">Equipped</div>
+        <div class="inv-equipped" id="inv-equipped"></div>
+        <div class="inv-section-label">Implements</div>
+        <div class="inv-items-list" id="inv-implements"><div class="inv-empty">nothing carried</div></div>
+        <div class="inv-section-label">Relics</div>
+        <div class="inv-items-list" id="inv-relics"><div class="inv-empty">nothing carried</div></div>
+        <div class="inv-section-label">Remnants</div>
+        <div class="inv-items-list" id="inv-remnants"><div class="inv-empty">nothing carried</div></div>
+        <div class="inv-burden-section">
+            <div class="inv-burden-label">CARRY BURDEN — <span id="inv-burden-text">0/20</span></div>
+            <div id="inv-burden-bar"><div id="inv-burden-fill" style="width:20%"></div></div>
+        </div>
+    </div>
+    
+    <!-- SKILL UPGRADE PANEL -->
+    <div id="upgrade-panel">
+        <div class="upgrade-header">
+            <div id="upgrade-title">INSIGHT</div>
+            <div id="upgrade-points"></div>
+            <div id="upgrade-close" onclick="document.dispatchEvent(new CustomEvent('upgrade-close'))">close [P]</div>
+        </div>
+        <div class="upgrade-section-label">SKILL UPGRADES</div>
+        <div id="upgrade-skills"></div>
+        <div class="upgrade-section-label">PASSIVE UPGRADES</div>
+        <div id="upgrade-passives"></div>
+    </div>
+    
+    <!-- SHOP PANEL — Sable's Trade -->
+    <div id="shop-panel">
+        <div class="shop-header">
+            <div class="shop-header-left">
+                <div id="shop-title">Sable's Trade</div>
+                <div id="shop-gold">0 gold</div>
+            </div>
+            <div id="shop-close" onclick="document.dispatchEvent(new CustomEvent('shop-close'))">close [ESC]</div>
+        </div>
+        <div class="shop-section-label">For Sale</div>
+        <div id="shop-buy-items"></div>
+        <div class="shop-section-label">Your Wares</div>
+        <div id="shop-sell-items"></div>
+    </div>
+    
+    <!-- DIALOGUE -->
+    <div id="dialogue-box" onclick="document.dispatchEvent(new CustomEvent('dialogue-dismiss'))">
+        <div id="dialogue-speaker"></div>
+        <div id="dialogue-text"></div>
+        <div id="dialogue-dismiss">press E or click to continue</div>
+    </div>
+    
+    <div id="area-name">The Holdfast<span id="area-subtitle">a holding pattern, not a refuge</span></div>
+    <div id="damage-flash"></div>
+    <div id="interact-prompt"></div>
+    
+    <canvas id="game-canvas"></canvas>
+    
+    <!-- cache‑bust to avoid stale script causing syntax errors -->
+    <script type="module" src="./game.js?v=1"></script>
+</body>
+</html>

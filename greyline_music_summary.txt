@@ -1,0 +1,72 @@
+Greyline Music System Summary
+
+This document collects all code and concepts related to the music that evolves with the greyline state (restraint <-> compulsion) in Surround Me.
+
+Core Concepts:
+- greyline.g ∈ [-1,1] determines side (negative=restraint, positive=compulsion).
+- greyline.getExtremity(), getSide() tools used throughout audio logic.
+- Time/tempo modifications based on greyline: tempoScale, effTempo, audioConfig.tempoFactor.
+- Audio configuration stored in `audioConfig` with values:
+    hubMelodyVolume, hubBassVolume, subBassVolume, pitchWarpStrength, pitchFactor,
+    bassWarpStrength, neutralHarmony, tempoFactor, titleVolume.
+- Settings UI sliders map to these config values (see index.html overlay). Sliders include
+    bass, beat, melody, pitch warp, pitch range, bass warp, harmony, tempo, title.
+
+Music Layers:
+1. Hub melody (guitar-like):
+   - Triggered in update loop when `hubMelTimer > hubMelInterval`.
+   - `hubPhrases` are defined as 8-step sequences representing eighth-note subdivisions of a 4/4 bar.
+   - In neutral, the system uses a modest song BPM (default 100 BPM) so the loop feels like a song.
+   - Interval per step = (60 / baseMelBpm) / 2 / effTempo (seconds per eighth note).
+   - Frequencies pulled from `hubPhrases` array of predefined note sequences.
+   - Frequency modifiers: twist based on wR-wL and extremity, scale warp for extremes,
+     pitchFactor (slider), optional random jitter.
+   - Harmony pads/counternotes triggered when wB>0.55 scaled by neutralHarmony.
+2. Bass: derived from melody notes (every other note), one octave down.
+   - Twisted similarly and volume/warp controlled by audioConfig.
+   - Additional sub‑octave layer and optional SFX punch when bass volume high.
+3. Sub‑bass pulse / kick-drums:
+   - BPM determined by state: compulsion ~160±, greyline ~96, restraint ~24.
+   - Pulse interval follows the quarter-note grid (seconds per quarter note = 60 / BPM) and is affected by `audioConfig.tempoFactor` when not neutral.
+   - Envelope computed with `pulseLevel` and `env`; baseSub + pulseAdd uses `subBassVolume`.
+   - `subGain` amplified by `subBassVolume`.
+4. Verge drones/industrial layers: separate ambient sound handled outside greyline summary.
+
+Key Variables and Formulas:
+- wL = max(0, -g); wR = max(0, g); wB = 1 - min(1, |g|)
+- tempoScale = clamp(timeScale * (1 - wL*0.10 + wR*0.10), 0.78, 1.6)
+- effTempo = (abs(g)<0.1 ? 1 : audioConfig.tempoFactor)
+ - hubMelInterval ~ (60/baseMelBpm)/2*(1+jitter)/effTempo  // eighth-note step interval
+ - baseMelBpm = targetSubBpm, but in neutral the engine uses `audioConfig.neutralBpm` (default 100)
+- pitch shift = freq * pitchFactor * (1 + twist) with twist = ((wR-wL)*0.25+extr*0.06)*pitchWarp
+- SubBass pulseAdd = env*(comp ? 0.32:greyline?0.12:0.06)*subBassVolume
+
+Initialization and Helpers:
+- `playGuitar(dest,freq,vol,decay)` synthesizes a guitar note; used by melody and bass.
+- `startTitleDemo(side)` forces greyline for demo and resets timers.
+- Settings UI functions: showSettings(), hideSettings(), initSettingsUI() manage sliders.
+- Audio update logic within the main update(dt) loop around lines 1140-1345.
+
+Usage Notes:
+- To tweak melodies, edit `hubPhrases` array or adjust pitch/twist formulas.
+- To modify beats, change state BPM constants or pulse envelope values.
+- Tempo slider now affects only BPM; pitchFactor slider adjusts pitch range.
+
+This file is meant for reference: copy, modify or extend to experiment with new musical behaviours.
+
+
+Musical notation for neutral loop (new 4/4 guitar progression — 8 eighth-note steps per bar):
+- Phrase A — C major (I): E4, G4, C5, G4, E4, G4, C5, G4
+- Phrase B — G major (V): D4, G4, B4, G4, D4, G4, B4, G4
+- Phrase C — A minor (vi): C4, E4, A4, E4, C4, E4, A4, E4
+- Phrase D — F major (IV): C4, F4, A4, F4, C4, F4, A4, F4
+- Phrase E — Variation: G4, E4, C5, E4, G4, E4, C5, E4
+- Phrase F — Turnaround: C5, B4, A4, G4, E4, D4, C4, B3
+- Phrase G — Sparse pluck: C4, rest, E4, rest, G4, rest, C5, rest
+- Phrase H — Harmony layer: E4, C5, G4, C5, E4, C5, G4, C5
+
+Bass and beat information:
+- Bass plays every other melody note one octave lower.
+- Kick drum at 96 BPM quarter notes (responsive to tempo slider when off neutral).
+
+Notation summary provided earlier should be saved here.
