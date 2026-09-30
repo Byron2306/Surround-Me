@@ -41,8 +41,10 @@
     const camY = camera && Number.isFinite(camera.y) ? camera.y : 0;
     const anchor = record.anchor || [0.5, 1];
     const runtimePixels = record.runtimePixels || [image.width, image.height];
-    const width = runtimePixels[0];
-    const height = runtimePixels[1];
+    const footprint = object.displayFootprintTiles || record.footprintTiles || [1, 1];
+    const width = (footprint[0] + footprint[1]) * (tileWidth / 2);
+    const sourceAspect = runtimePixels[0] > 0 ? runtimePixels[1] / runtimePixels[0] : image.height / image.width;
+    const height = width * sourceAspect;
     const dx = p.x + camX - width * anchor[0];
     const dy = p.y + camY - height * anchor[1];
     ctx.drawImage(image, dx, dy, width, height);
