@@ -56,11 +56,12 @@
       "footprintTiles": [3, 3],
       "anchor": [0.5, 1.0],
       "nominalHeightM": 6.5,
-      "masterPixels": [2048, 2048],
-      "runtimePixels": [1024, 1024],
+      "masterPixels": [2048, 1365],
+      "runtimePixels": [1024, 683],
       "transparent": true,
-      "status": "planned",
-      "phaseA": true
+      "status": "candidate",
+      "phaseA": true,
+      "provenance": "recovered-surround-me-house2"
     },
     {
       "id": "building.shop.corner.01",
