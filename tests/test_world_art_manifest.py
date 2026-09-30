@@ -50,6 +50,17 @@ class WorldArtManifestTests(unittest.TestCase):
         required = {'road', 'building', 'vehicle', 'street_furniture', 'utility', 'clutter', 'vegetation', 'atmosphere'}
         self.assertTrue(required.issubset(categories), required - categories)
 
+    def test_phase_a_scale_is_frozen(self):
+        data = self.load()
+        scale = data['scale']
+        runtime = data['runtime']
+        for key in ('tileWidthPx', 'tileHeightPx', 'alizaReferenceHeightPx', 'referenceDoorHeightM', 'referenceCarLengthM'):
+            self.assertIsInstance(scale[key], (int, float), key)
+            self.assertGreater(scale[key], 0, key)
+        self.assertEqual(scale['status'], 'frozen')
+        self.assertIsInstance(runtime['closestNormalZoom'], (int, float))
+        self.assertGreater(runtime['closestNormalZoom'], 0)
+
 
 if __name__ == '__main__':
     unittest.main()
