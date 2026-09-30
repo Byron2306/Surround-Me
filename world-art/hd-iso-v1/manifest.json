@@ -3,7 +3,7 @@
   "projection": {
     "type": "orthographic_isometric",
     "yawDegrees": 45,
-    "pitchDegrees": null,
+    "pitchDegrees": 30,
     "cameraPolicy": "frozen-after-phase-a-calibration"
   },
   "lighting": {
@@ -13,82 +13,130 @@
     "fogBakedIntoAssets": false
   },
   "scale": {
-    "tileWidthPx": null,
-    "tileHeightPx": null,
-    "alizaReferenceHeightPx": null,
+    "tileWidthPx": 64,
+    "tileHeightPx": 32,
+    "alizaReferenceHeightPx": 165.0,
     "referenceDoorHeightM": 2.0,
     "referenceCarLengthM": 4.5,
-    "status": "planned"
+    "status": "frozen",
+    "worldTileSizeM": 2.0,
+    "assetScaleTolerancePct": 3.0
   },
   "runtime": {
-    "closestNormalZoom": null,
-    "layers": ["ground", "road_decal", "structure_vehicle_prop", "vegetation", "atmosphere"],
+    "closestNormalZoom": 2.0625,
+    "layers": [
+      "ground",
+      "road_decal",
+      "structure_vehicle_prop",
+      "vegetation",
+      "atmosphere"
+    ],
     "missingAssetPolicy": "diagnostic_refuse"
   },
   "assets": [
     {
-      "id": "road.intersection.4way.01", "category": "road",
+      "id": "road.intersection.4way.01",
+      "category": "road",
       "source": "world-art/hd-iso-v1/masters/road_intersection_4way_01.png",
       "runtimeSource": "world-art/hd-iso-v1/runtime/road_intersection_4way_01.webp",
-      "footprintTiles": [4, 4], "anchor": [0.5, 1.0], "nominalHeightM": 0,
-      "masterPixels": [2048, 2048], "runtimePixels": [1024, 1024],
-      "transparent": true, "status": "planned"
+      "footprintTiles": [4, 4],
+      "anchor": [0.5, 1.0],
+      "nominalHeightM": 0,
+      "masterPixels": [2048, 2048],
+      "runtimePixels": [1024, 1024],
+      "transparent": true,
+      "status": "planned"
     },
     {
-      "id": "building.house.suburban.01", "category": "building",
+      "id": "building.house.suburban.01",
+      "category": "building",
       "source": "world-art/hd-iso-v1/masters/building_house_suburban_01.png",
       "runtimeSource": "world-art/hd-iso-v1/runtime/building_house_suburban_01.webp",
-      "footprintTiles": [3, 3], "anchor": [0.5, 1.0], "nominalHeightM": 6.5,
-      "masterPixels": [2048, 2048], "runtimePixels": [1024, 1024],
-      "transparent": true, "status": "planned"
+      "footprintTiles": [3, 3],
+      "anchor": [0.5, 1.0],
+      "nominalHeightM": 6.5,
+      "masterPixels": [2048, 2048],
+      "runtimePixels": [1024, 1024],
+      "transparent": true,
+      "status": "planned"
     },
     {
-      "id": "vehicle.sedan.01", "category": "vehicle",
+      "id": "vehicle.sedan.01",
+      "category": "vehicle",
       "source": "world-art/hd-iso-v1/masters/vehicle_sedan_01.png",
       "runtimeSource": "world-art/hd-iso-v1/runtime/vehicle_sedan_01.webp",
-      "footprintTiles": [2, 1], "anchor": [0.5, 1.0], "nominalHeightM": 1.5,
-      "masterPixels": [1536, 1536], "runtimePixels": [768, 768],
-      "transparent": true, "status": "planned"
+      "footprintTiles": [2, 1],
+      "anchor": [0.5, 1.0],
+      "nominalHeightM": 1.5,
+      "masterPixels": [1536, 1536],
+      "runtimePixels": [768, 768],
+      "transparent": true,
+      "status": "planned"
     },
     {
-      "id": "street_furniture.traffic_light.01", "category": "street_furniture",
+      "id": "street_furniture.traffic_light.01",
+      "category": "street_furniture",
       "source": "world-art/hd-iso-v1/masters/street_furniture_traffic_light_01.png",
       "runtimeSource": "world-art/hd-iso-v1/runtime/street_furniture_traffic_light_01.webp",
-      "footprintTiles": [0.25, 0.25], "anchor": [0.5, 1.0], "nominalHeightM": 4.5,
-      "masterPixels": [1024, 1024], "runtimePixels": [512, 512],
-      "transparent": true, "status": "planned"
+      "footprintTiles": [0.25, 0.25],
+      "anchor": [0.5, 1.0],
+      "nominalHeightM": 4.5,
+      "masterPixels": [1024, 1024],
+      "runtimePixels": [512, 512],
+      "transparent": true,
+      "status": "planned"
     },
     {
-      "id": "utility.power_pole.01", "category": "utility",
+      "id": "utility.power_pole.01",
+      "category": "utility",
       "source": "world-art/hd-iso-v1/masters/utility_power_pole_01.png",
       "runtimeSource": "world-art/hd-iso-v1/runtime/utility_power_pole_01.webp",
-      "footprintTiles": [0.25, 0.25], "anchor": [0.5, 1.0], "nominalHeightM": 9,
-      "masterPixels": [1024, 1536], "runtimePixels": [512, 768],
-      "transparent": true, "status": "planned"
+      "footprintTiles": [0.25, 0.25],
+      "anchor": [0.5, 1.0],
+      "nominalHeightM": 9,
+      "masterPixels": [1024, 1536],
+      "runtimePixels": [512, 768],
+      "transparent": true,
+      "status": "planned"
     },
     {
-      "id": "clutter.dumpster.01", "category": "clutter",
+      "id": "clutter.dumpster.01",
+      "category": "clutter",
       "source": "world-art/hd-iso-v1/masters/clutter_dumpster_01.png",
       "runtimeSource": "world-art/hd-iso-v1/runtime/clutter_dumpster_01.webp",
-      "footprintTiles": [1, 0.5], "anchor": [0.5, 1.0], "nominalHeightM": 1.4,
-      "masterPixels": [1024, 1024], "runtimePixels": [512, 512],
-      "transparent": true, "status": "planned"
+      "footprintTiles": [1, 0.5],
+      "anchor": [0.5, 1.0],
+      "nominalHeightM": 1.4,
+      "masterPixels": [1024, 1024],
+      "runtimePixels": [512, 512],
+      "transparent": true,
+      "status": "planned"
     },
     {
-      "id": "vegetation.weeds.01", "category": "vegetation",
+      "id": "vegetation.weeds.01",
+      "category": "vegetation",
       "source": "world-art/hd-iso-v1/masters/vegetation_weeds_01.png",
       "runtimeSource": "world-art/hd-iso-v1/runtime/vegetation_weeds_01.webp",
-      "footprintTiles": [0.5, 0.5], "anchor": [0.5, 1.0], "nominalHeightM": 0.35,
-      "masterPixels": [1024, 1024], "runtimePixels": [512, 512],
-      "transparent": true, "status": "planned"
+      "footprintTiles": [0.5, 0.5],
+      "anchor": [0.5, 1.0],
+      "nominalHeightM": 0.35,
+      "masterPixels": [1024, 1024],
+      "runtimePixels": [512, 512],
+      "transparent": true,
+      "status": "planned"
     },
     {
-      "id": "atmosphere.fog_bank.01", "category": "atmosphere",
+      "id": "atmosphere.fog_bank.01",
+      "category": "atmosphere",
       "source": "world-art/hd-iso-v1/masters/atmosphere_fog_bank_01.png",
       "runtimeSource": "world-art/hd-iso-v1/runtime/atmosphere_fog_bank_01.webp",
-      "footprintTiles": [4, 2], "anchor": [0.5, 1.0], "nominalHeightM": 1,
-      "masterPixels": [2048, 1024], "runtimePixels": [1024, 512],
-      "transparent": true, "status": "planned"
+      "footprintTiles": [4, 2],
+      "anchor": [0.5, 1.0],
+      "nominalHeightM": 1,
+      "masterPixels": [2048, 1024],
+      "runtimePixels": [1024, 512],
+      "transparent": true,
+      "status": "planned"
     }
   ]
 }
