@@ -45,7 +45,8 @@
       "masterPixels": [2048, 2048],
       "runtimePixels": [1024, 1024],
       "transparent": true,
-      "status": "planned"
+      "status": "planned",
+      "phaseA": true
     },
     {
       "id": "building.house.suburban.01",
@@ -58,7 +59,22 @@
       "masterPixels": [2048, 2048],
       "runtimePixels": [1024, 1024],
       "transparent": true,
-      "status": "planned"
+      "status": "planned",
+      "phaseA": true
+    },
+    {
+      "id": "building.shop.corner.01",
+      "category": "building",
+      "source": "world-art/hd-iso-v1/masters/building_shop_corner_01.png",
+      "runtimeSource": "world-art/hd-iso-v1/runtime/building_shop_corner_01.webp",
+      "footprintTiles": [3, 2],
+      "anchor": [0.5, 1.0],
+      "nominalHeightM": 5.5,
+      "masterPixels": [2048, 2048],
+      "runtimePixels": [1024, 1024],
+      "transparent": true,
+      "status": "planned",
+      "phaseA": true
     },
     {
       "id": "vehicle.sedan.01",
@@ -71,7 +87,8 @@
       "masterPixels": [1536, 1536],
       "runtimePixels": [768, 768],
       "transparent": true,
-      "status": "planned"
+      "status": "planned",
+      "phaseA": true
     },
     {
       "id": "street_furniture.traffic_light.01",
@@ -84,7 +101,8 @@
       "masterPixels": [1024, 1024],
       "runtimePixels": [512, 512],
       "transparent": true,
-      "status": "planned"
+      "status": "planned",
+      "phaseA": true
     },
     {
       "id": "utility.power_pole.01",
@@ -97,7 +115,8 @@
       "masterPixels": [1024, 1536],
       "runtimePixels": [512, 768],
       "transparent": true,
-      "status": "planned"
+      "status": "planned",
+      "phaseA": true
     },
     {
       "id": "clutter.dumpster.01",
@@ -110,7 +129,8 @@
       "masterPixels": [1024, 1024],
       "runtimePixels": [512, 512],
       "transparent": true,
-      "status": "planned"
+      "status": "planned",
+      "phaseA": true
     },
     {
       "id": "vegetation.weeds.01",
@@ -123,7 +143,8 @@
       "masterPixels": [1024, 1024],
       "runtimePixels": [512, 512],
       "transparent": true,
-      "status": "planned"
+      "status": "planned",
+      "phaseA": true
     },
     {
       "id": "atmosphere.fog_bank.01",
@@ -136,7 +157,8 @@
       "masterPixels": [2048, 1024],
       "runtimePixels": [1024, 512],
       "transparent": true,
-      "status": "planned"
+      "status": "planned",
+      "phaseA": true
     }
   ]
 }
