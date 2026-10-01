@@ -10,19 +10,26 @@ MASTER_SIZE = (2048, 2048)
 RUNTIME_SIZE = (1024, 1024)
 SEED = 23022026
 
+
 def _iso_xy(cx: float, top_y: float, half_w: float, half_h: float, u: float, v: float):
     return (
         cx + (u - v) * (half_w / 2),
         top_y + half_h + (u + v) * (half_h / 2),
     )
 
+
 def build_intersection(asphalt_path: Path, master_path: Path, runtime_path: Path) -> None:
     src = Image.open(asphalt_path).convert("RGBA")
     w, h = MASTER_SIZE
     cx = w // 2
-    top_y = 500
-    half_w = 900
-    half_h = 450
+
+    # Flat ground assets use bottom-centre world contact. Fill the full canonical
+    # width so a 4x4-tile diamond projects to the renderer's full logical width,
+    # and terminate its bottom point exactly at y=2048. This avoids transparent
+    # padding changing apparent world placement or scale.
+    top_y = 1024
+    half_w = 1024
+    half_h = 512
     diamond = [
         (cx, top_y),
         (cx + half_w, top_y + half_h),
@@ -34,7 +41,7 @@ def build_intersection(asphalt_path: Path, master_path: Path, runtime_path: Path
     mask = Image.new("L", MASTER_SIZE, 0)
     ImageDraw.Draw(mask).polygon(diamond, fill=255)
 
-    tex = src.resize((1800, 900), Image.Resampling.LANCZOS)
+    tex = src.resize((2048, 1024), Image.Resampling.LANCZOS)
     rgb = tex.convert("RGB")
     rgb = ImageEnhance.Color(rgb).enhance(0.72)
     rgb = ImageEnhance.Contrast(rgb).enhance(1.08)
@@ -42,7 +49,7 @@ def build_intersection(asphalt_path: Path, master_path: Path, runtime_path: Path
     tex = rgb.convert("RGBA")
 
     ground = Image.new("RGBA", MASTER_SIZE, (0, 0, 0, 0))
-    ground.alpha_composite(tex, (cx - half_w, top_y))
+    ground.alpha_composite(tex, (0, top_y))
     ground.putalpha(mask)
     canvas = Image.alpha_composite(canvas, ground)
 
@@ -55,18 +62,18 @@ def build_intersection(asphalt_path: Path, master_path: Path, runtime_path: Path
     yellow2 = (194, 174, 72, 115)
 
     for u0, u1, v in [(-1, -.26, -.085), (.26, 1, -.085), (-1, -.26, .085), (.26, 1, .085)]:
-        pd.line([iso(u0, v), iso(u1, v)], fill=yellow if v < 0 else yellow2, width=7)
+        pd.line([iso(u0, v), iso(u1, v)], fill=yellow if v < 0 else yellow2, width=8)
     for v0, v1, u in [(-1, -.26, -.085), (.26, 1, -.085), (-1, -.26, .085), (.26, 1, .085)]:
-        pd.line([iso(u, v0), iso(u, v1)], fill=yellow if u < 0 else yellow2, width=7)
+        pd.line([iso(u, v0), iso(u, v1)], fill=yellow if u < 0 else yellow2, width=8)
 
     random.seed(11022026)
     wear = Image.new("L", MASTER_SIZE, 0)
     wd = ImageDraw.Draw(wear)
-    for _ in range(650):
-        x = random.randint(cx - half_w, cx + half_w)
-        y = random.randint(top_y, top_y + 2 * half_h)
+    for _ in range(720):
+        x = random.randint(0, w - 1)
+        y = random.randint(top_y, h - 1)
         wd.ellipse(
-            (x, y, x + random.randint(3, 12), y + random.randint(1, 5)),
+            (x, y, x + random.randint(3, 14), y + random.randint(1, 6)),
             fill=random.randint(90, 210),
         )
     paint.putalpha(Image.composite(Image.new("L", MASTER_SIZE, 0), paint.getchannel("A"), wear))
@@ -78,7 +85,7 @@ def build_intersection(asphalt_path: Path, master_path: Path, runtime_path: Path
     pld = ImageDraw.Draw(patch_layer, "RGBA")
     random.seed(SEED)
 
-    for _ in range(42):
+    for _ in range(48):
         u = random.uniform(-0.88, 0.88)
         v = random.uniform(-0.88, 0.88)
         length = random.uniform(0.07, 0.22)
@@ -93,14 +100,17 @@ def build_intersection(asphalt_path: Path, master_path: Path, runtime_path: Path
         dd.line(pts, fill=(12, 12, 11, 115), width=random.choice([2, 2, 3]))
         if random.random() < 0.55:
             q = pts[random.randint(1, len(pts) - 2)]
-            dd.line([q, (q[0] + random.randint(-18, 18), q[1] + random.randint(-10, 10))],
-                    fill=(14, 13, 12, 80), width=2)
+            dd.line(
+                [q, (q[0] + random.randint(-20, 20), q[1] + random.randint(-12, 12))],
+                fill=(14, 13, 12, 80),
+                width=2,
+            )
 
-    for _ in range(7):
+    for _ in range(8):
         u = random.uniform(-0.7, 0.7)
         v = random.uniform(-0.7, 0.7)
         x, y = iso(u, v)
-        rx, ry = random.randint(35, 85), random.randint(14, 34)
+        rx, ry = random.randint(40, 96), random.randint(16, 38)
         poly = []
         for k in range(10):
             a = 2 * math.pi * k / 10
@@ -109,11 +119,11 @@ def build_intersection(asphalt_path: Path, master_path: Path, runtime_path: Path
         pld.polygon(poly, fill=(38, 37, 34, 80))
         pld.line(poly + [poly[0]], fill=(20, 19, 18, 50), width=2)
 
-    for _ in range(6):
+    for _ in range(7):
         u = random.uniform(-0.72, 0.72)
         v = random.uniform(-0.72, 0.72)
         x, y = iso(u, v)
-        rx, ry = random.randint(24, 60), random.randint(10, 24)
+        rx, ry = random.randint(28, 68), random.randint(12, 28)
         rim = []
         inner = []
         for k in range(14):
@@ -125,11 +135,11 @@ def build_intersection(asphalt_path: Path, master_path: Path, runtime_path: Path
         dd.polygon(rim, fill=(17, 16, 15, 120))
         dd.polygon(inner, fill=(5, 5, 5, 125))
 
-    for _ in range(28):
+    for _ in range(32):
         u = random.uniform(-0.82, 0.82)
         v = random.uniform(-0.82, 0.82)
         x, y = iso(u, v)
-        rx, ry = random.randint(8, 30), random.randint(3, 12)
+        rx, ry = random.randint(8, 34), random.randint(3, 14)
         dd.ellipse((x - rx, y - ry, x + rx, y + ry), fill=(18, 16, 13, random.randint(12, 38)))
 
     for layer in (distress, patch_layer):
@@ -146,6 +156,7 @@ def build_intersection(asphalt_path: Path, master_path: Path, runtime_path: Path
     canvas.save(master_path, optimize=True)
     canvas.resize(RUNTIME_SIZE, Image.Resampling.LANCZOS).save(runtime_path, "WEBP", quality=93, method=6)
 
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--asphalt", required=True, type=Path)
@@ -154,6 +165,7 @@ def main() -> int:
     args = parser.parse_args()
     build_intersection(args.asphalt, args.master, args.runtime)
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
