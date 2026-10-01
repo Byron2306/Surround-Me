@@ -1,5 +1,6 @@
 import json
 import pathlib
+import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -60,6 +61,22 @@ class WorldArtManifestTests(unittest.TestCase):
         self.assertEqual(scale['status'], 'frozen')
         self.assertIsInstance(runtime['closestNormalZoom'], (int, float))
         self.assertGreater(runtime['closestNormalZoom'], 0)
+
+    def test_physical_size_must_match_tile_footprint_within_scale_tolerance(self):
+        from tools.validate_world_art_manifest import validate_manifest
+        data = self.load()
+        sedan = next(asset for asset in data['assets'] if asset['id'] == 'vehicle.sedan.01')
+        self.assertEqual(sedan['physicalSizeM'], [4.5, 1.8])
+        self.assertEqual(sedan['footprintTiles'], [2.25, 0.9])
+
+        broken = json.loads(json.dumps(data))
+        broken_sedan = next(asset for asset in broken['assets'] if asset['id'] == 'vehicle.sedan.01')
+        broken_sedan['footprintTiles'] = [2, 1]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / 'manifest.json'
+            path.write_text(json.dumps(broken), encoding='utf-8')
+            errors = validate_manifest(path)
+        self.assertTrue(any('physicalSizeM does not match footprintTiles' in error for error in errors), errors)
 
 
 if __name__ == '__main__':
