@@ -12,9 +12,11 @@ on:
       - 'tools/verify_phase_a_acceptance.py'
       - 'tools/build_hd_iso_intersection.py'
       - 'tools/compile_city_blueprint.py'
+      - 'tools/ingest_world_art_candidate.py'
       - 'tests/**world_art**'
       - 'tests/**phase_a**'
       - 'tests/test_city_blueprint*.py'
+      - 'tests/test_ingest_world_art_candidate.py'
       - '.github/workflows/phase-a-world-art.yml'
 
 jobs:
@@ -51,7 +53,8 @@ jobs:
             tests.test_hd_iso_intersection_builder \
             tests.test_city_blueprint \
             tests.test_city_blueprint_compiler \
-            tests.test_phase_a_street_layout
+            tests.test_phase_a_street_layout \
+            tests.test_ingest_world_art_candidate
 
       - name: Node projection registry scene renderer and player contracts
         run: |
