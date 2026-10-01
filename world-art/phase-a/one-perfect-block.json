@@ -1,0 +1,36 @@
+{
+  "schema": "surround-me-phase-a-block-v1",
+  "name": "one-perfect-block",
+  "status": "blocked_pending_golden_four",
+  "spawn": { "x": 0, "y": 6 },
+  "bounds": { "minX": -12, "minY": -12, "maxX": 12, "maxY": 12 },
+  "ground": {
+    "assetId": "road.intersection.4way.01",
+    "worldX": 0,
+    "worldY": 0,
+    "layer": "ground",
+    "blocking": false
+  },
+  "objects": [
+    {
+      "assetId": "building.house.suburban.01",
+      "worldX": -7,
+      "worldY": -5,
+      "blocking": true
+    },
+    {
+      "assetId": "building.shop.corner.01",
+      "worldX": 6,
+      "worldY": -5,
+      "blocking": true
+    },
+    {
+      "assetId": "vehicle.sedan.01",
+      "worldX": 4,
+      "worldY": 4,
+      "blocking": true,
+      "zBias": 0
+    }
+  ],
+  "atmosphere": []
+}
