@@ -24,10 +24,20 @@ class IntersectionBuilderTests(unittest.TestCase):
                     [image.getpixel(p)[3] for p in [(0, 0), (2047, 0), (0, 2047), (2047, 2047)]],
                     [0, 0, 0, 0],
                 )
-                self.assertIsNotNone(image.getchannel("A").getbbox())
+                bbox = image.getchannel("A").getbbox()
+                self.assertIsNotNone(bbox)
+                self.assertEqual(bbox[0], 0)
+                self.assertEqual(bbox[2], 2048)
+                self.assertEqual(bbox[3], 2048, "road bottom point must terminate on bottom-centre anchor")
+                self.assertGreaterEqual(bbox[1], 1000)
+                self.assertLessEqual(bbox[1], 1030)
 
             with Image.open(runtime).convert("RGBA") as image:
                 self.assertEqual(image.size, (1024, 1024))
+                bbox = image.getchannel("A").getbbox()
+                self.assertEqual(bbox[0], 0)
+                self.assertEqual(bbox[2], 1024)
+                self.assertEqual(bbox[3], 1024)
 
 
 if __name__ == "__main__":
