@@ -29,13 +29,13 @@ test('display size derives from world footprint, not runtime texture resolution'
   assert.equal(calls[0][3], 192);
 });
 
-test('car footprint produces canonical projected width independent of source resolution', () => {
+test('car footprint preserves physical 4.5m x 1.8m size at frozen 2m-per-tile scale', () => {
   const ctx = { drawImage() {} };
   const record = {
     id: 'vehicle.sedan.01',
     status: 'approved',
     anchor: [0.5, 1],
-    footprintTiles: [2, 1],
+    footprintTiles: [2.25, 0.9],
     runtimePixels: [768, 768]
   };
   const registry = {
@@ -48,5 +48,5 @@ test('car footprint produces canonical projected width independent of source res
     { x: 0, y: 0, zoom: 2.0625 },
     registry
   );
-  assert.equal(result.width, 96);
+  assert.ok(Math.abs(result.width - 100.8) < 1e-9);
 });
