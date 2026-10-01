@@ -17,6 +17,7 @@ on:
       - 'tests/**phase_a**'
       - 'tests/test_city_blueprint*.py'
       - 'tests/test_ingest_world_art_candidate.py'
+      - 'tests/road_topology.test.js'
       - '.github/workflows/phase-a-world-art.yml'
 
 jobs:
@@ -56,20 +57,22 @@ jobs:
             tests.test_phase_a_street_layout \
             tests.test_ingest_world_art_candidate
 
-      - name: Node projection registry scene renderer and player contracts
+      - name: Node projection registry scene renderer player and road contracts
         run: |
           node --test \
             tests/world_art_calibration.test.js \
             tests/world_art_registry.test.js \
             tests/world_art_renderer.test.js \
             tests/phase_a_scene.test.js \
-            tests/phase_a_player.test.js
+            tests/phase_a_player.test.js \
+            tests/road_topology.test.js
 
       - name: Browser preview syntax
         run: |
           node --check world-art/phase-a/calibration-preview.js
           node --check world-art/phase-a/street-layout-preview.js
           node --check world-art/phase-a/playable-preview.js
+          node --check world-art/hd-iso-v1/road-topology.js
 
       - name: Assert unfinished Phase A remains locked
         shell: bash
