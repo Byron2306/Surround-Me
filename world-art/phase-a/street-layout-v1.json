@@ -1,0 +1,117 @@
+{
+  "schema": "surround-me-phase-a-street-layout-v1",
+  "status": "calibration_geometry",
+  "worldTileSizeM": 2.0,
+  "road": {
+    "carriagewayWidthM": 8.0,
+    "carriagewayWidthTiles": 4.0,
+    "intersectionBoxM": [8.0, 8.0],
+    "laneCount": 2,
+    "laneWidthM": 3.5,
+    "edgeReserveM": 0.5,
+    "curbHeightM": 0.15
+  },
+  "sidewalk": {
+    "widthM": 2.0,
+    "widthTiles": 1.0,
+    "minimumClearWalkingWidthM": 1.2,
+    "surface": "weathered_concrete",
+    "curbBandM": 0.15
+  },
+  "goldenFourPlacements": [
+    {"assetId": "road.intersection.4way.01", "world": [0, 0]},
+    {"assetId": "building.house.suburban.01", "world": [-7, -5]},
+    {"assetId": "building.shop.corner.01", "world": [6, -5]},
+    {"assetId": "vehicle.sedan.01", "world": [4, 4]}
+  ],
+  "lots": [
+    {
+      "id": "lot.northwest.house",
+      "districtRole": "residential_corner",
+      "centerWorld": [-7, -5],
+      "sizeM": [9.0, 9.0],
+      "assetId": "building.house.suburban.01",
+      "assetFootprintM": [6.0, 6.0],
+      "setbackM": 1.5,
+      "frontage": "south_east"
+    },
+    {
+      "id": "lot.northeast.shop",
+      "districtRole": "commercial_corner",
+      "centerWorld": [6, -5],
+      "sizeM": [8.0, 7.0],
+      "assetId": "building.shop.corner.01",
+      "assetFootprintM": [6.0, 4.0],
+      "setbackM": 1.0,
+      "frontage": "south_west"
+    },
+    {
+      "id": "lot.southwest.future",
+      "districtRole": "reserved_mixed_use",
+      "centerWorld": [-6, 6],
+      "sizeM": [10.0, 8.0],
+      "setbackM": 1.0,
+      "frontage": "north_east"
+    },
+    {
+      "id": "lot.southeast.street_edge",
+      "districtRole": "parking_and_service",
+      "centerWorld": [5.5, 5.5],
+      "sizeM": [10.0, 8.0],
+      "setbackM": 0.5,
+      "frontage": "north_west"
+    }
+  ],
+  "parkingBays": [
+    {
+      "id": "parking.sedan.01",
+      "world": [4, 4],
+      "sizeM": [5.4, 2.5],
+      "vehicleAssetId": "vehicle.sedan.01",
+      "vehicleSizeM": [4.5, 1.8],
+      "orientation": "southeast",
+      "clearanceM": [0.45, 0.35]
+    }
+  ],
+  "pedestrianRoutes": [
+    {
+      "id": "walk.north_frontage",
+      "clearWidthM": 1.5,
+      "points": [[-5, -2.5], [0, -2.5], [4.5, -2.5]]
+    },
+    {
+      "id": "walk.south_frontage",
+      "clearWidthM": 1.5,
+      "points": [[-4.5, 2.5], [0, 2.5], [4.5, 2.5]]
+    },
+    {
+      "id": "walk.west_frontage",
+      "clearWidthM": 1.5,
+      "points": [[-2.5, -4.5], [-2.5, 0], [-2.5, 4.5]]
+    },
+    {
+      "id": "walk.east_frontage",
+      "clearWidthM": 1.5,
+      "points": [[2.5, -4.5], [2.5, 0], [2.5, 4.5]]
+    }
+  ],
+  "crossings": [
+    {"id": "crossing.north", "widthM": 3.0, "world": [0, -2.25]},
+    {"id": "crossing.south", "widthM": 3.0, "world": [0, 2.25]},
+    {"id": "crossing.west", "widthM": 3.0, "world": [-2.25, 0]},
+    {"id": "crossing.east", "widthM": 3.0, "world": [2.25, 0]}
+  ],
+  "streetFurnitureZones": [
+    {"id": "furniture.ne", "world": [2.6, -2.6], "allowed": ["traffic_light", "street_light", "street_sign", "bin"]},
+    {"id": "furniture.nw", "world": [-2.6, -2.6], "allowed": ["traffic_light", "street_light", "street_sign", "hydrant"]},
+    {"id": "furniture.se", "world": [2.6, 2.6], "allowed": ["traffic_light", "street_light", "utility_box"]},
+    {"id": "furniture.sw", "world": [-2.6, 2.6], "allowed": ["traffic_light", "street_light", "bench", "bin"]}
+  ],
+  "acceptanceRules": {
+    "alizaMustTraverseAllFourSidewalkFrontages": true,
+    "vehicleMustNotObstructCrosswalk": true,
+    "buildingFootprintsMustRemainOutsideCarriageway": true,
+    "minimumPedestrianClearWidthM": 1.0,
+    "artMayNotChangeCivilGeometryWithoutTestUpdate": true
+  }
+}
