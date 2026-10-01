@@ -1,0 +1,77 @@
+{
+  "schema": "surround-me-hd-iso-generation-batch-v1",
+  "batchId": "PHASE_A_GOLDEN_MASTERS_001",
+  "status": "WAITING_GENERATION",
+  "projectionContract": "HD-ISO-V1",
+  "sharedRules": {
+    "projection": "orthographic isometric, 45deg yaw, approx 30deg pitch",
+    "lighting": "neutral-cool overcast, key northwest to southeast",
+    "background": "true transparency",
+    "fogBakedIntoAsset": false,
+    "perspectiveConvergence": false,
+    "depthOfField": false,
+    "painterlySoftness": false,
+    "anchor": [0.5, 1.0],
+    "worldTileSizeM": 2.0,
+    "closestNormalZoom": 2.0625,
+    "alizaScreenReferencePx": 165
+  },
+  "assets": [
+    {
+      "assetId": "building.house.suburban.01",
+      "priority": 1,
+      "prompt": "world-art/hd-iso-v1/prompts/building_house_suburban_01.md",
+      "masterPath": "world-art/hd-iso-v1/masters/building_house_suburban_01_isolated.png",
+      "runtimePath": "world-art/hd-iso-v1/runtime/building_house_suburban_01_isolated.webp",
+      "masterPixels": [2048, 2048],
+      "runtimePixels": [1024, 1024],
+      "physicalSizeM": [7.5, 6.0],
+      "footprintTiles": [3.75, 3.0],
+      "referenceAssets": ["reference.house.suburban.lot.01"],
+      "forbiddenBakedElements": ["yard", "driveway", "road", "curb", "sidewalk", "fence", "mailbox", "bins", "vehicles", "free-standing vegetation", "debris piles"],
+      "state": "MISSING_MASTER"
+    },
+    {
+      "assetId": "building.shop.corner.01",
+      "priority": 2,
+      "prompt": "world-art/hd-iso-v1/prompts/building_shop_corner_01.md",
+      "masterPath": "world-art/hd-iso-v1/masters/building_shop_corner_01.png",
+      "runtimePath": "world-art/hd-iso-v1/runtime/building_shop_corner_01.webp",
+      "masterPixels": [2048, 2048],
+      "runtimePixels": [1024, 1024],
+      "physicalSizeM": [6.0, 4.0],
+      "footprintTiles": [3.0, 2.0],
+      "forbiddenBakedElements": ["road", "curb", "sidewalk", "cars", "streetlights", "trash piles", "fog", "neighbouring buildings"],
+      "state": "MISSING_MASTER"
+    },
+    {
+      "assetId": "vehicle.sedan.01",
+      "priority": 3,
+      "prompt": "world-art/hd-iso-v1/prompts/vehicle_sedan_01.md",
+      "masterPath": "world-art/hd-iso-v1/masters/vehicle_sedan_01.png",
+      "runtimePath": "world-art/hd-iso-v1/runtime/vehicle_sedan_01.webp",
+      "masterPixels": [1536, 1536],
+      "runtimePixels": [768, 768],
+      "physicalSizeM": [4.5, 1.8],
+      "footprintTiles": [2.25, 0.9],
+      "forbiddenBakedElements": ["road", "parking bay", "curb", "debris pile", "fog", "occupants"],
+      "state": "MISSING_MASTER"
+    },
+    {
+      "assetId": "road.intersection.4way.01",
+      "priority": 4,
+      "productionMethod": "deterministic_local_compiler",
+      "compiler": "tools/build_hd_iso_intersection.py",
+      "masterPath": "world-art/hd-iso-v1/masters/road_intersection_4way_01.png",
+      "runtimePath": "world-art/hd-iso-v1/runtime/road_intersection_4way_01.webp",
+      "masterPixels": [2048, 2048],
+      "runtimePixels": [1024, 1024],
+      "physicalSizeM": [8.0, 8.0],
+      "footprintTiles": [4.0, 4.0],
+      "state": "REPRODUCIBLE_PROTOTYPE"
+    }
+  ],
+  "ingestionCommandTemplate": "python tools/ingest_world_art_candidate.py --asset-id <ASSET_ID> --input <PNG> --repo-root .",
+  "promotionRule": "Candidate ingestion never grants approval. All four assets must be visually reviewed together in Phase A calibration and playable murder-test surfaces.",
+  "massGenerationAllowed": false
+}
