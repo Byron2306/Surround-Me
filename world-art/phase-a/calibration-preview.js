@@ -46,16 +46,29 @@
     ctx.restore();
   }
 
-  function drawCandidate(image, record, worldX, worldY, originX, originY) {
+  function drawCandidate(image, record, worldX, worldY, originX, originY, alpha = 1) {
     const p = iso(worldX, worldY);
     const fp = record.footprintTiles;
     const width = (fp[0] + fp[1]) * (tileWidth / 2);
     const height = width * (record.runtimePixels[1] / record.runtimePixels[0]);
     ctx.save();
     ctx.scale(zoom, zoom);
+    ctx.globalAlpha = alpha;
     const gx = originX / zoom + p.x;
     const gy = originY / zoom + p.y;
     ctx.drawImage(image, gx - width * record.anchor[0], gy - height * record.anchor[1], width, height);
+    ctx.restore();
+  }
+
+  function drawReferenceStamp(label, worldX, worldY, originX, originY) {
+    const p = iso(worldX, worldY);
+    ctx.save();
+    ctx.scale(zoom, zoom);
+    const x = originX / zoom + p.x;
+    const y = originY / zoom + p.y;
+    ctx.fillStyle = 'rgba(235,170,80,.95)';
+    ctx.font = 'bold 9px monospace';
+    ctx.fillText(`REFUSED REFERENCE ONLY: ${label}`, x - 110, y + 18);
     ctx.restore();
   }
 
@@ -179,7 +192,7 @@
     ctx.restore();
   }
 
-  function drawMissingSlot(label, worldX, worldY, originX, originY) {
+  function drawMissingSlot(label, worldX, worldY, originX, originY, width = 100, height = 55) {
     const p = iso(worldX, worldY);
     ctx.save();
     ctx.scale(zoom, zoom);
@@ -187,11 +200,11 @@
     const y = originY / zoom + p.y;
     ctx.strokeStyle = 'rgba(220,90,90,.75)';
     ctx.setLineDash([4, 3]);
-    ctx.strokeRect(x - 50, y - 55, 100, 55);
+    ctx.strokeRect(x - width/2, y - height, width, height);
     ctx.setLineDash([]);
     ctx.fillStyle = 'rgba(230,120,120,.95)';
     ctx.font = '9px monospace';
-    ctx.fillText(`REFUSE: ${label} MASTER MISSING`, x - 48, y - 30);
+    ctx.fillText(`REFUSE: ${label} MASTER MISSING`, x - width/2 + 2, y - height - 5);
     ctx.restore();
   }
 
@@ -206,13 +219,16 @@
     });
     const byId = id => manifest.assets.find(a => a.id === id);
     const houseRecord = byId('building.house.suburban.01');
+    const referenceHouseRecord = byId('reference.house.suburban.lot.01');
     const roadRecord = byId('road.intersection.4way.01');
     const shopRecord = byId('building.shop.corner.01');
     const sedanRecord = byId('vehicle.sedan.01');
-    if (!houseRecord || !roadRecord || !shopRecord || !sedanRecord) throw new Error('Golden Four manifest records incomplete');
+    if (!houseRecord || !referenceHouseRecord || !roadRecord || !shopRecord || !sedanRecord) {
+      throw new Error('Golden Four/reference manifest records incomplete');
+    }
 
-    const [house, asphalt] = await Promise.all([
-      loadImage(`../../${houseRecord.source}`),
+    const [referenceHouse, asphalt] = await Promise.all([
+      loadImage(`../../${referenceHouseRecord.source}`),
       loadImage('../../asphalt1.png'),
     ]);
     const intersection = makeIntersectionTexture(asphalt);
@@ -221,12 +237,16 @@
     const oy = canvas.height * 0.62;
     drawIsoGrid(ox, oy);
     drawIntersection(intersection, roadRecord, ox, oy);
-    drawCandidate(house, houseRecord, -2.8, -2.0, ox, oy);
-    drawAlizaReference(ox, oy);
-    drawMissingSlot('CORNER SHOP', 2.5, -1.4, ox, oy);
-    drawMissingSlot('SEDAN', 1.2, 1.2, ox, oy);
 
-    status.textContent = `HD-ISO-V1 | house=${houseRecord.status} | intersection=reproducible prototype | shop=${shopRecord.status} | sedan=${sedanRecord.status} | zoom ${zoom}`;
+    drawCandidate(referenceHouse, referenceHouseRecord, -5.0, -4.5, ox, oy, 0.58);
+    drawReferenceStamp('RECOVERED BAKED LOT', -5.0, -4.5, ox, oy);
+
+    drawMissingSlot('ISOLATED HOUSE', -2.8, -2.0, ox, oy, 108, 65);
+    drawMissingSlot('CORNER SHOP', 2.5, -1.4, ox, oy, 100, 65);
+    drawMissingSlot('SEDAN', 1.2, 1.2, ox, oy, 101, 30);
+    drawAlizaReference(ox, oy);
+
+    status.textContent = `HD-ISO-V1 | house=${houseRecord.status} (old lot=${referenceHouseRecord.status} reference) | intersection=reproducible prototype | shop=${shopRecord.status} | sedan=${sedanRecord.status} | zoom ${zoom}`;
   }
 
   window.addEventListener('resize', () => render().catch(err => status.textContent = err.message));
