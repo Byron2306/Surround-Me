@@ -65,9 +65,9 @@
     out.height = 2048;
     const g = out.getContext('2d');
     const cx = 1024;
-    const top = 500;
-    const hw = 900;
-    const hh = 450;
+    const top = 1024;
+    const hw = 1024;
+    const hh = 512;
 
     g.save();
     g.beginPath();
@@ -78,7 +78,7 @@
     g.closePath();
     g.clip();
     g.globalAlpha = 0.93;
-    g.drawImage(asphalt, cx - hw, top, hw * 2, hh * 2);
+    g.drawImage(asphalt, 0, top, 2048, 1024);
     g.globalAlpha = 1;
 
     const toIso = (u, v) => [
@@ -90,7 +90,7 @@
       const p0 = toIso(a[0], a[1]);
       const p1 = toIso(b[0], b[1]);
       g.strokeStyle = `rgba(202,183,82,${alpha})`;
-      g.lineWidth = 7;
+      g.lineWidth = 8;
       g.beginPath();
       g.moveTo(p0[0], p0[1]);
       g.lineTo(p1[0], p1[1]);
@@ -110,7 +110,7 @@
       return seed / 4294967296;
     };
 
-    for (let i = 0; i < 42; i++) {
+    for (let i = 0; i < 48; i++) {
       const u = rand() * 1.72 - .86;
       const v = rand() * 1.72 - .86;
       const len = .07 + rand() * .16;
@@ -129,10 +129,10 @@
       g.stroke();
     }
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 7; i++) {
       const p = toIso(rand()*1.35-.675, rand()*1.35-.675);
-      const rx = 28 + rand()*46;
-      const ry = 10 + rand()*20;
+      const rx = 32 + rand()*52;
+      const ry = 12 + rand()*24;
       g.fillStyle = 'rgba(5,5,5,.34)';
       g.beginPath();
       g.ellipse(p[0], p[1], rx, ry, 0, 0, Math.PI*2);
