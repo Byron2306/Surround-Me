@@ -8,7 +8,7 @@
       "name": "golden_four",
       "status": "IN_PROGRESS",
       "assets": [
-        {"id": "building.house.suburban.01", "count": 1, "state": "candidate"},
+        {"id": "building.house.suburban.01", "count": 1, "state": "missing_isolated_master", "rejectedReference": "reference.house.suburban.lot.01"},
         {"id": "road.intersection.4way.01", "count": 1, "state": "reproducible_prototype"},
         {"id": "building.shop.corner.01", "count": 1, "state": "missing_master"},
         {"id": "vehicle.sedan.01", "count": 1, "state": "missing_master"}
