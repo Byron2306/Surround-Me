@@ -48,6 +48,16 @@ def validate_manifest(path: pathlib.Path) -> list[str]:
     if data.get("projection", {}).get("type") != "orthographic_isometric":
         errors.append("projection.type must be orthographic_isometric")
 
+    scale = data.get("scale", {})
+    world_tile_size_m = scale.get("worldTileSizeM")
+    scale_tolerance_pct = scale.get("assetScaleTolerancePct")
+    if not isinstance(world_tile_size_m, (int, float)) or isinstance(world_tile_size_m, bool) or world_tile_size_m <= 0:
+        errors.append("scale.worldTileSizeM must be a positive number")
+        world_tile_size_m = None
+    if not isinstance(scale_tolerance_pct, (int, float)) or isinstance(scale_tolerance_pct, bool) or scale_tolerance_pct < 0:
+        errors.append("scale.assetScaleTolerancePct must be a non-negative number")
+        scale_tolerance_pct = None
+
     assets = data.get("assets")
     if not isinstance(assets, list):
         return errors + ["assets must be a list"]
@@ -96,6 +106,28 @@ def validate_manifest(path: pathlib.Path) -> list[str]:
         footprint = asset["footprintTiles"]
         if not _valid_pair(footprint) or any(v <= 0 for v in footprint):
             errors.append(f"{prefix}.footprintTiles must be two positive numbers")
+
+        physical_size = asset.get("physicalSizeM")
+        if physical_size is not None:
+            if not _valid_pair(physical_size) or any(v <= 0 for v in physical_size):
+                errors.append(f"{prefix}.physicalSizeM must be two positive numbers")
+            elif _valid_pair(footprint) and all(v > 0 for v in footprint) and world_tile_size_m and scale_tolerance_pct is not None:
+                expected = [footprint[0] * world_tile_size_m, footprint[1] * world_tile_size_m]
+                tolerance = scale_tolerance_pct / 100.0
+                mismatches = []
+                for axis, actual, target in zip(("x", "y"), physical_size, expected):
+                    if target <= 0:
+                        continue
+                    relative_error = abs(actual - target) / target
+                    if relative_error > tolerance:
+                        mismatches.append(
+                            f"{axis}: physical={actual:.4g}m footprint={target:.4g}m error={relative_error * 100:.2f}%"
+                        )
+                if mismatches:
+                    errors.append(
+                        f"{prefix}.physicalSizeM does not match footprintTiles at {world_tile_size_m}m/tile: "
+                        + "; ".join(mismatches)
+                    )
 
         master = asset["masterPixels"]
         runtime = asset["runtimePixels"]
