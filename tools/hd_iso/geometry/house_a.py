@@ -34,19 +34,20 @@ def compile_house_a(template: dict, structural_seed: int) -> GeometryManifest:
     pitch = rng.uniform(pitch_min, effective_pitch_max)
     roof_rise = gable_roof_rise(depth_m, pitch, template["roof"]["ridgeAxis"])
 
-    door_position = _uniform(rng, template["door"]["lateralPosition"])
+    door_position = rng.choice((0.32, 0.50, 0.68))
     door = front_door(float(template["door"]["widthM"]), float(template["door"]["heightM"]), door_position)
 
     wcfg = template["windows"]
     count = rng.randint(int(wcfg["frontCount"]["min"]), int(wcfg["frontCount"]["max"]))
-    if count == 1:
-        positions = [0.2 if door_position > 0.5 else 0.8]
-    else:
-        positions = [0.18 + i * (0.64 / (count - 1)) for i in range(count)]
+    candidate_positions = [0.14, 0.32, 0.50, 0.68, 0.86]
+    candidate_positions = [p for p in candidate_positions if abs(p - door_position) > 1e-9]
+    rng.shuffle(candidate_positions)
+    positions = sorted(candidate_positions[:count])
+    safe_width_bounds = {"min": float(wcfg["widthM"]["min"]), "max": min(1.0, float(wcfg["widthM"]["max"]))}
     windows = tuple(
         front_window(
             i + 1,
-            _uniform(rng, wcfg["widthM"]),
+            _uniform(rng, safe_width_bounds),
             _uniform(rng, wcfg["heightM"]),
             _uniform(rng, wcfg["sillHeightM"]),
             pos,
