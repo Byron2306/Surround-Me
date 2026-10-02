@@ -38,6 +38,7 @@ class HouseGeometry:
     door: OpeningSocket
     windows: tuple[OpeningSocket, ...]
     attachments: tuple[AttachmentSocket, ...]
+    roof_rise_m: float = 0.0
 
 
 @dataclass(frozen=True)
