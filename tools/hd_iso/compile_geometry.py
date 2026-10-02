@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict
 from pathlib import Path
 
 from .geometry.house_a import compile_house_a
@@ -22,8 +21,42 @@ def compile_template(template_id: str, structural_seed: int = 0, root: Path | No
     return compile_house_a(template, structural_seed)
 
 
+def _opening_dict(opening) -> dict:
+    return {
+        "name": opening.name,
+        "facade": opening.facade,
+        "widthM": opening.width_m,
+        "heightM": opening.height_m,
+        "sillHeightM": opening.sill_height_m,
+        "lateralPosition": opening.lateral_position,
+    }
+
+
 def manifest_dict(manifest: GeometryManifest) -> dict:
-    return asdict(manifest)
+    h = manifest.house
+    return {
+        "schemaVersion": manifest.schema_version,
+        "templateId": manifest.template_id,
+        "structuralSeed": manifest.structural_seed,
+        "house": {
+            "templateId": h.template_id,
+            "widthM": h.width_m,
+            "depthM": h.depth_m,
+            "maxHeightM": h.max_height_m,
+            "anchor": list(h.anchor),
+            "facadeOrientation": h.facade_orientation,
+            "wallHeightM": h.wall_height_m,
+            "roofPitchDegrees": h.roof_pitch_degrees,
+            "roofRiseM": h.roof_rise_m,
+            "ridgeAxis": h.ridge_axis,
+            "eaveOverhangM": h.eave_overhang_m,
+            "door": _opening_dict(h.door),
+            "windows": [_opening_dict(w) for w in h.windows],
+            "attachments": [
+                {"name": a.name, "facade": a.facade, "boundsM": list(a.bounds_m)} for a in h.attachments
+            ],
+        },
+    }
 
 
 def canonical_geometry_json(manifest: GeometryManifest) -> str:
