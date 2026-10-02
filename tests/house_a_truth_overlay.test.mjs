@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   HOUSE_A_TRUTH,
   buildHouseATruthGeometry,
+  buildHouseAGreyboxGeometry,
 } from '../world-art/hd-iso-v1/house-a-truth-overlay.mjs';
 
 const project = (wx, wy) => ({
@@ -36,4 +37,22 @@ test('House A truth overlay uses the live 64x32 projection and immutable vertica
   assert.ok(Math.abs(geometry.doorRisePx - expectedDoorRise) < 1e-9);
 
   assert.deepEqual(geometry.anchorWorld, { x: 11.875, y: 23 });
+});
+
+test('House A solid greybox exposes deterministic wall roof and opening shapes', () => {
+  const geometry = buildHouseAGreyboxGeometry(10, 20, project);
+
+  assert.equal(geometry.wallHeightM > 0, true);
+  assert.equal(geometry.roofPitchDegrees > 0, true);
+  assert.equal(geometry.wallFaces.length, 4);
+  assert.equal(geometry.roofFaces.length, 2);
+  assert.equal(geometry.frontDoor.widthM, 0.9);
+  assert.equal(geometry.frontDoor.heightM, 2.0);
+  assert.equal(geometry.frontDoor.polygon.length, 4);
+  assert.equal(Array.isArray(geometry.frontWindows), true);
+  assert.deepEqual(geometry.anchorWorld, { x: 11.875, y: 23 });
+
+  const roofPeakY = Math.min(...geometry.roofFaces.flat().map((p) => p.y));
+  const wallTopY = Math.min(...geometry.wallFaces.flat().map((p) => p.y));
+  assert.ok(roofPeakY < wallTopY, 'gable roof must rise above the wall plate');
 });
