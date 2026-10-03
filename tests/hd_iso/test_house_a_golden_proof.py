@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import argparse
 import copy
+import hashlib
 import json
 import sys
 import tempfile
@@ -69,7 +71,81 @@ def assert_refuses(manifest: dict, scene_manifest: dict, out: Path) -> None:
     assert proof["reasons"]
 
 
-def main() -> None:
+def _sha256(path: Path) -> str:
+    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _canonical_proof(proof: dict) -> dict:
+    """Return only deterministic proof truth, excluding filesystem location."""
+    return {
+        "schemaVersion": proof["schemaVersion"],
+        "status": proof["status"],
+        "reasons": proof["reasons"],
+        "templateId": proof["templateId"],
+        "structuralSeed": proof["structuralSeed"],
+        "checks": proof["checks"],
+        "geometry": proof["geometry"],
+        "projection": proof["projection"],
+        "scene": proof["scene"],
+    }
+
+
+def compare_real_builds(first_root: Path, second_root: Path) -> dict:
+    first_geometry = first_root / "geometry.json"
+    second_geometry = second_root / "geometry.json"
+    first_scene_path = first_root / "render" / "scene-manifest.json"
+    second_scene_path = second_root / "render" / "scene-manifest.json"
+    first_proof_path = first_root / "proof" / "proof.json"
+    second_proof_path = second_root / "proof" / "proof.json"
+
+    required = (
+        first_geometry,
+        second_geometry,
+        first_scene_path,
+        second_scene_path,
+        first_proof_path,
+        second_proof_path,
+    )
+    missing = [str(path) for path in required if not path.exists()]
+    assert not missing, f"missing build evidence: {missing}"
+
+    first_scene = json.loads(first_scene_path.read_text())
+    second_scene = json.loads(second_scene_path.read_text())
+    first_proof = json.loads(first_proof_path.read_text())
+    second_proof = json.loads(second_proof_path.read_text())
+
+    assert first_geometry.read_bytes() == second_geometry.read_bytes(), "canonical geometry JSON drift"
+    geometry_sha = _sha256(first_geometry)
+    assert geometry_sha == _sha256(second_geometry), "geometry SHA drift"
+
+    assert first_scene["cameraHash"] == second_scene["cameraHash"], "camera hash drift"
+    assert first_scene["projectionAdapter"] == second_scene["projectionAdapter"], "projection adapter drift"
+    assert first_scene["render"]["width"] == second_scene["render"]["width"], "render width drift"
+    assert first_scene["render"]["height"] == second_scene["render"]["height"], "render height drift"
+    assert first_scene["anchor"]["worldM"] == second_scene["anchor"]["worldM"], "anchor world drift"
+    assert first_scene["anchor"]["pixel"] == second_scene["anchor"]["pixel"], "anchor pixel drift"
+    assert first_scene["footprintPixel"] == second_scene["footprintPixel"], "footprint projection drift"
+
+    assert first_proof["status"] == "PASS", first_proof
+    assert second_proof["status"] == "PASS", second_proof
+    assert _canonical_proof(first_proof) == _canonical_proof(second_proof), "canonical proof manifest drift"
+
+    return {
+        "status": "PASS",
+        "geometrySha256": geometry_sha,
+        "cameraHash": first_scene["cameraHash"],
+        "projectionAdapter": first_scene["projectionAdapter"],
+        "anchorWorldM": first_scene["anchor"]["worldM"],
+        "anchorPixel": first_scene["anchor"]["pixel"],
+        "footprintPixel": first_scene["footprintPixel"],
+        "render": {
+            "width": first_scene["render"]["width"],
+            "height": first_scene["render"]["height"],
+        },
+    }
+
+
+def run_synthetic_proof() -> None:
     manifest = manifest_dict(compile_template("house.master.a", structural_seed=18427, root=ROOT))
     scene_manifest = canonical_scene_manifest(manifest)
 
@@ -120,6 +196,20 @@ def main() -> None:
         assert_refuses(manifest, bad_scene, Path(tmp) / "tamper-render")
 
     print("PASS: House A golden proof bundle and tamper refusal")
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--compare-builds", nargs=2, type=Path, metavar=("FIRST", "SECOND"))
+    args = parser.parse_args(argv)
+
+    if args.compare_builds:
+        result = compare_real_builds(*args.compare_builds)
+        print(json.dumps(result, sort_keys=True))
+        print("PASS: House A real-build determinism murder test")
+        return
+
+    run_synthetic_proof()
 
 
 if __name__ == "__main__":
