@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
 
 from tools.hd_iso.compile_geometry import compile_template, manifest_dict  # noqa: E402
 from tools.hd_iso.blender.build_mesh import build_house_objects  # noqa: E402
+from tools.hd_iso.blender.build_scene import build_house_scene  # noqa: E402
 
 
 def assert_close(a: float, b: float, tol: float = 1e-6) -> None:
@@ -58,7 +59,16 @@ def main() -> None:
     assert_close(objects["roof"]["roofPitchDegrees"], float(house["roofPitchDegrees"]))
     assert_close(objects["roof"]["roofRiseM"], float(house["roofRiseM"]))
 
-    print("PASS: House A Blender mesh obeys deterministic manifest geometry")
+    # Task 7 also requires the thin scene wrapper used by later render passes.
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    scene_result = build_house_scene(bpy, manifest_json)
+    assert scene_result["cameraProof"].status == "PASS", scene_result["cameraProof"].reasons
+    assert bpy.context.scene.camera is not None
+    assert set(("foundation", "walls", "roof", "door", "anchor")).issubset(scene_result["objects"])
+    assert_close(scene_result["objects"]["foundation"].dimensions.x, 7.5)
+    assert_close(scene_result["objects"]["foundation"].dimensions.y, 6.0)
+
+    print("PASS: House A Blender mesh and canonical scene obey deterministic manifest geometry")
 
 
 if __name__ == "__main__":
