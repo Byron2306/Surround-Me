@@ -14,6 +14,7 @@ from tools.hd_iso.compile_geometry import compile_template, manifest_dict  # noq
 from tools.hd_iso.geometry.projection import project_ground  # noqa: E402
 from tools.hd_iso.proof.verify_geometry import build_geometry_proof  # noqa: E402
 from tools.hd_iso.proof.verify_projection import (  # noqa: E402
+    EXPECTED_PROJECTION_ADAPTER,
     build_projection_proof,
     canonical_camera_matrix,
 )
@@ -45,6 +46,7 @@ def canonical_scene_manifest(manifest: dict) -> dict:
         "render": {"width": RENDER_W, "height": RENDER_H, "transparent": True},
         "cameraHash": CAMERA_HASH,
         "cameraMatrix": canonical_camera_matrix(),
+        "projectionAdapter": EXPECTED_PROJECTION_ADAPTER,
         "anchor": {
             "worldM": anchor_world,
             "pixel": [256.0 + anchor_ground[0], 256.0 + anchor_ground[1]],
@@ -85,6 +87,7 @@ def main() -> None:
         assert proof["checks"]["anchor"] == "PASS"
         assert proof["checks"]["doorScale"] == "PASS"
         assert proof["checks"]["camera"] == "PASS"
+        assert proof["checks"]["projectionAdapter"] == "PASS"
         assert proof["checks"]["footprintPixels"] == "PASS"
         assert proof["checks"]["anchorPixel"] == "PASS"
 
@@ -107,6 +110,10 @@ def main() -> None:
         bad_scene = copy.deepcopy(scene_manifest)
         bad_scene["cameraMatrix"][0][0] += 0.01
         assert_refuses(manifest, bad_scene, Path(tmp) / "tamper-camera")
+
+        bad_scene = copy.deepcopy(scene_manifest)
+        bad_scene["projectionAdapter"] = "none"
+        assert_refuses(manifest, bad_scene, Path(tmp) / "tamper-adapter")
 
         bad_scene = copy.deepcopy(scene_manifest)
         bad_scene["render"]["width"] += 1
