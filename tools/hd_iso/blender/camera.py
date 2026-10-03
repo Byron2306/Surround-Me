@@ -12,7 +12,9 @@ CAMERA_NAME = "HDISO_CANONICAL_CAMERA"
 AZIMUTH_DEGREES = 45.0
 ELEVATION_DEGREES = 30.0
 ROLL_DEGREES = 0.0
-ORTHO_SCALE = 20.0
+# 512px render with 45deg azimuth must resolve to the canonical 16px/m
+# horizontal ground component and 8px/m vertical ground component.
+ORTHO_SCALE = 16.0 * math.sqrt(2.0)
 CAMERA_DISTANCE = 20.0
 GROUND_BASIS_X = (32.0, 16.0)
 GROUND_BASIS_Y = (-32.0, 16.0)
