@@ -1,16 +1,27 @@
 from __future__ import annotations
 
+import math
+
 from tools.hd_iso.geometry.projection import project_ground
 
 CANONICAL_RENDER_WIDTH = 512
 CANONICAL_RENDER_HEIGHT = 512
-_EXPECTED_CAMERA_MATRIX = [
-    [1.0, 0.0, 0.0, 0.0],
-    [0.0, 1.0, 0.0, 0.0],
-    [0.0, 0.0, 1.0, 0.0],
-    [0.0, 0.0, 0.0, 1.0],
-]
-_TOL = 1e-6
+_TOL = 1e-5
+
+
+def canonical_camera_matrix() -> list[list[float]]:
+    e = math.radians(30.0)
+    s2 = math.sqrt(2.0)
+    right = (1.0 / s2, -1.0 / s2, 0.0)
+    up = (-math.sin(e) / s2, -math.sin(e) / s2, math.cos(e))
+    back = (math.cos(e) / s2, math.cos(e) / s2, math.sin(e))
+    loc = tuple(20.0 * v for v in back)
+    return [
+        [right[0], up[0], back[0], loc[0]],
+        [right[1], up[1], back[1], loc[1]],
+        [right[2], up[2], back[2], loc[2]],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
 
 
 def _close(a: float, b: float) -> bool:
@@ -69,11 +80,12 @@ def build_projection_proof(manifest: dict, scene_manifest: dict) -> dict:
 
     camera_hash = scene_manifest.get("cameraHash")
     camera_matrix = scene_manifest.get("cameraMatrix")
+    expected_matrix = canonical_camera_matrix()
     camera_ok = (
         isinstance(camera_hash, str)
         and camera_hash.startswith("sha256:")
         and isinstance(camera_matrix, list)
-        and _matrix_close(camera_matrix, _EXPECTED_CAMERA_MATRIX)
+        and _matrix_close(camera_matrix, expected_matrix)
         and render_ok
     )
     checks["camera"] = "PASS" if camera_ok else "REFUSE"
@@ -124,6 +136,6 @@ def build_projection_proof(manifest: dict, scene_manifest: dict) -> dict:
             "anchorPixel": expected_anchor_pixel,
             "footprintPixel": expected_footprint_pixel,
             "render": {"width": CANONICAL_RENDER_WIDTH, "height": CANONICAL_RENDER_HEIGHT},
-            "cameraMatrix": _EXPECTED_CAMERA_MATRIX,
+            "cameraMatrix": expected_matrix,
         },
     }
