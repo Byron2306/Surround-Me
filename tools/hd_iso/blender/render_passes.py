@@ -11,6 +11,7 @@ from .camera import verify_canonical_camera
 CANONICAL_RENDER_WIDTH = 512
 CANONICAL_RENDER_HEIGHT = 512
 CANONICAL_CYCLES_SAMPLES = 64
+PROJECTION_ADAPTER = "mirror_x"
 
 
 def verify_render_contract(scene) -> dict:
@@ -140,12 +141,24 @@ def _render_data_passes(bpy, out: Path) -> None:
     scene.use_nodes = False
 
 
-def _pixel(scene, world_xyz) -> list[float]:
+def _blender_pixel(scene, world_xyz) -> list[float]:
     co = world_to_camera_view(scene, scene.camera, Vector(world_xyz))
     return [
         float(co.x * CANONICAL_RENDER_WIDTH),
         float((1.0 - co.y) * CANONICAL_RENDER_HEIGHT),
     ]
+
+
+def _game_pixel(scene, world_xyz) -> list[float]:
+    """Convert Blender's right-handed image X into the game's left-handed X.
+
+    The game projection is sx=(X-Y)*16 while the canonical Blender camera
+    produces the same magnitude with opposite horizontal handedness. The
+    authoritative adapter mirrors X around the 512px render centre and leaves
+    Y unchanged.
+    """
+    x, y = _blender_pixel(scene, world_xyz)
+    return [float(CANONICAL_RENDER_WIDTH - x), y]
 
 
 def _camera_matrix(scene) -> list[list[float]]:
@@ -220,8 +233,14 @@ def render_authoritative_passes(bpy, manifest: dict, out_dir: Path | str) -> dic
         },
         "cameraHash": contract["cameraHash"],
         "cameraMatrix": _camera_matrix(scene),
-        "anchor": {"worldM": anchor_world, "pixel": _pixel(scene, anchor_world)},
-        "footprintPixel": [_pixel(scene, p) for p in footprint_world],
+        "projectionAdapter": PROJECTION_ADAPTER,
+        "anchor": {
+            "worldM": anchor_world,
+            "pixel": _game_pixel(scene, anchor_world),
+            "blenderPixel": _blender_pixel(scene, anchor_world),
+        },
+        "footprintPixel": [_game_pixel(scene, p) for p in footprint_world],
+        "footprintBlenderPixel": [_blender_pixel(scene, p) for p in footprint_world],
     }
     (out / "scene-manifest.json").write_text(json.dumps(scene_manifest, sort_keys=True, indent=2) + "\n")
 
