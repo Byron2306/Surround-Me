@@ -6,13 +6,19 @@ from tools.hd_iso.geometry.projection import project_ground
 
 CANONICAL_RENDER_WIDTH = 512
 CANONICAL_RENDER_HEIGHT = 512
+EXPECTED_PROJECTION_ADAPTER = "mirror_x"
 _TOL = 1e-5
 
 
 def canonical_camera_matrix() -> list[list[float]]:
+    """Expected Blender matrix_world for the frozen right-handed camera."""
     e = math.radians(30.0)
     s2 = math.sqrt(2.0)
-    right = (1.0 / s2, -1.0 / s2, 0.0)
+    # Blender's camera right vector is the opposite horizontal handedness of
+    # the game's sx=(X-Y)*16 basis. That difference is intentionally resolved
+    # by EXPECTED_PROJECTION_ADAPTER after projection, not by corrupting the
+    # physical camera transform.
+    right = (-1.0 / s2, 1.0 / s2, 0.0)
     up = (-math.sin(e) / s2, -math.sin(e) / s2, math.cos(e))
     back = (math.cos(e) / s2, math.cos(e) / s2, math.sin(e))
     loc = tuple(20.0 * v for v in back)
@@ -78,6 +84,12 @@ def build_projection_proof(manifest: dict, scene_manifest: dict) -> dict:
     if not render_ok:
         reasons.append("render_dimensions_mismatch")
 
+    adapter = scene_manifest.get("projectionAdapter")
+    adapter_ok = adapter == EXPECTED_PROJECTION_ADAPTER
+    checks["projectionAdapter"] = "PASS" if adapter_ok else "REFUSE"
+    if not adapter_ok:
+        reasons.append("projection_adapter_mismatch")
+
     camera_hash = scene_manifest.get("cameraHash")
     camera_matrix = scene_manifest.get("cameraMatrix")
     expected_matrix = canonical_camera_matrix()
@@ -87,6 +99,7 @@ def build_projection_proof(manifest: dict, scene_manifest: dict) -> dict:
         and isinstance(camera_matrix, list)
         and _matrix_close(camera_matrix, expected_matrix)
         and render_ok
+        and adapter_ok
     )
     checks["camera"] = "PASS" if camera_ok else "REFUSE"
     if not camera_ok:
@@ -130,6 +143,7 @@ def build_projection_proof(manifest: dict, scene_manifest: dict) -> dict:
             "render": render,
             "cameraHash": camera_hash,
             "cameraMatrix": camera_matrix,
+            "projectionAdapter": adapter,
         },
         "expected": {
             "anchorWorldM": anchor_world,
@@ -137,5 +151,6 @@ def build_projection_proof(manifest: dict, scene_manifest: dict) -> dict:
             "footprintPixel": expected_footprint_pixel,
             "render": {"width": CANONICAL_RENDER_WIDTH, "height": CANONICAL_RENDER_HEIGHT},
             "cameraMatrix": expected_matrix,
+            "projectionAdapter": EXPECTED_PROJECTION_ADAPTER,
         },
     }
