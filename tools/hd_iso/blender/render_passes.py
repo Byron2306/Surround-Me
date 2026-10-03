@@ -21,17 +21,11 @@ def verify_render_contract(scene) -> dict:
         reasons.extend(camera_proof.reasons)
 
     if scene.render.resolution_x != CANONICAL_RENDER_WIDTH:
-        reasons.append(
-            f"render width drift: {scene.render.resolution_x} != {CANONICAL_RENDER_WIDTH}"
-        )
+        reasons.append(f"render width drift: {scene.render.resolution_x} != {CANONICAL_RENDER_WIDTH}")
     if scene.render.resolution_y != CANONICAL_RENDER_HEIGHT:
-        reasons.append(
-            f"render height drift: {scene.render.resolution_y} != {CANONICAL_RENDER_HEIGHT}"
-        )
+        reasons.append(f"render height drift: {scene.render.resolution_y} != {CANONICAL_RENDER_HEIGHT}")
     if scene.render.resolution_percentage != 100:
-        reasons.append(
-            f"render percentage drift: {scene.render.resolution_percentage} != 100"
-        )
+        reasons.append(f"render percentage drift: {scene.render.resolution_percentage} != 100")
     if scene.render.film_transparent is not True:
         reasons.append("transparent film is disabled")
     if scene.render.engine != "CYCLES":
@@ -49,10 +43,6 @@ def verify_render_contract(scene) -> dict:
 
 
 def _configure_render(scene) -> None:
-    # PRoot Debian on the target Android device cannot safely create the
-    # radeonsi/AMDGPU context required by Eevee. The authoritative proof path
-    # is therefore CPU-only Cycles. This is deliberate production policy, not
-    # a fallback chosen per asset.
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
     scene.cycles.samples = CANONICAL_CYCLES_SAMPLES
@@ -63,10 +53,6 @@ def _configure_render(scene) -> None:
     scene.render.film_transparent = True
     scene.render.image_settings.file_format = "PNG"
     scene.render.image_settings.color_mode = "RGBA"
-
-    # Debian's Blender build in the target environment has no OpenImageDenoise
-    # support. Disable view-layer denoising explicitly as well so Blender never
-    # attempts to initialize unavailable denoising kernels.
     for view_layer in scene.view_layers:
         view_layer.cycles.use_denoising = False
 
@@ -151,25 +137,19 @@ def _render_data_passes(bpy, out: Path) -> None:
         raise RuntimeError("Blender did not emit required depth/normal EXR passes")
     depth_candidates[-1].replace(out / "depth.exr")
     normal_candidates[-1].replace(out / "normals.exr")
-
     scene.use_nodes = False
 
 
-def _anchor_pixel(scene, manifest: dict) -> list[float]:
-    h = manifest["house"]
-    width = float(h["widthM"])
-    depth = float(h["depthM"])
-    anchor = h["anchor"]
-    world = Vector((
-        width * float(anchor[0]),
-        depth * float(anchor[1]),
-        0.0,
-    ))
-    co = world_to_camera_view(scene, scene.camera, world)
+def _pixel(scene, world_xyz) -> list[float]:
+    co = world_to_camera_view(scene, scene.camera, Vector(world_xyz))
     return [
         float(co.x * CANONICAL_RENDER_WIDTH),
         float((1.0 - co.y) * CANONICAL_RENDER_HEIGHT),
     ]
+
+
+def _camera_matrix(scene) -> list[list[float]]:
+    return [[float(v) for v in row] for row in scene.camera.matrix_world]
 
 
 def render_authoritative_passes(bpy, manifest: dict, out_dir: Path | str) -> dict:
@@ -206,12 +186,7 @@ def render_authoritative_passes(bpy, manifest: dict, out_dir: Path | str) -> dic
         (1.0, 0.0, 1.0, 1.0),
     ]
     for index, obj in enumerate(meshes):
-        mat = _material(
-            bpy,
-            f"HDISO_OBJECT_ID_{index}",
-            object_colours[index % len(object_colours)],
-            emission=True,
-        )
+        mat = _material(bpy, f"HDISO_OBJECT_ID_{index}", object_colours[index % len(object_colours)], emission=True)
         _assign_material(obj, mat)
     _render_png(bpy, out / "object-id.png")
 
@@ -220,11 +195,16 @@ def render_authoritative_passes(bpy, manifest: dict, out_dir: Path | str) -> dic
     _render_data_passes(bpy, out)
 
     h = manifest["house"]
-    anchor_world = [
-        float(h["widthM"]) * float(h["anchor"][0]),
-        float(h["depthM"]) * float(h["anchor"][1]),
-        0.0,
+    width = float(h["widthM"])
+    depth = float(h["depthM"])
+    anchor_world = [width * float(h["anchor"][0]), depth * float(h["anchor"][1]), 0.0]
+    footprint_world = [
+        (0.0, 0.0, 0.0),
+        (width, 0.0, 0.0),
+        (width, depth, 0.0),
+        (0.0, depth, 0.0),
     ]
+
     scene_manifest = {
         "schemaVersion": "hd-iso-scene-manifest-v1",
         "templateId": manifest["templateId"],
@@ -239,14 +219,11 @@ def render_authoritative_passes(bpy, manifest: dict, out_dir: Path | str) -> dic
             "denoising": False,
         },
         "cameraHash": contract["cameraHash"],
-        "anchor": {
-            "worldM": anchor_world,
-            "pixel": _anchor_pixel(scene, manifest),
-        },
+        "cameraMatrix": _camera_matrix(scene),
+        "anchor": {"worldM": anchor_world, "pixel": _pixel(scene, anchor_world)},
+        "footprintPixel": [_pixel(scene, p) for p in footprint_world],
     }
-    (out / "scene-manifest.json").write_text(
-        json.dumps(scene_manifest, sort_keys=True, indent=2) + "\n"
-    )
+    (out / "scene-manifest.json").write_text(json.dumps(scene_manifest, sort_keys=True, indent=2) + "\n")
 
     final_contract = verify_render_contract(scene)
     if final_contract["status"] != "PASS":
