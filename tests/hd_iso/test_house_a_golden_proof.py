@@ -13,7 +13,10 @@ if str(ROOT) not in sys.path:
 from tools.hd_iso.compile_geometry import compile_template, manifest_dict  # noqa: E402
 from tools.hd_iso.geometry.projection import project_ground  # noqa: E402
 from tools.hd_iso.proof.verify_geometry import build_geometry_proof  # noqa: E402
-from tools.hd_iso.proof.verify_projection import build_projection_proof  # noqa: E402
+from tools.hd_iso.proof.verify_projection import (  # noqa: E402
+    build_projection_proof,
+    canonical_camera_matrix,
+)
 from tools.hd_iso.proof.calibration_card import write_proof_bundle  # noqa: E402
 
 CAMERA_HASH = "sha256:test-camera-lock"
@@ -41,12 +44,7 @@ def canonical_scene_manifest(manifest: dict) -> dict:
         "structuralSeed": int(manifest["structuralSeed"]),
         "render": {"width": RENDER_W, "height": RENDER_H, "transparent": True},
         "cameraHash": CAMERA_HASH,
-        "cameraMatrix": [
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0],
-        ],
+        "cameraMatrix": canonical_camera_matrix(),
         "anchor": {
             "worldM": anchor_world,
             "pixel": [256.0 + anchor_ground[0], 256.0 + anchor_ground[1]],
@@ -90,7 +88,6 @@ def main() -> None:
         assert proof["checks"]["footprintPixels"] == "PASS"
         assert proof["checks"]["anchorPixel"] == "PASS"
 
-        # Each structural/projection corruption must poison the aggregate proof.
         bad = copy.deepcopy(manifest)
         bad["house"]["widthM"] += 0.25
         assert_refuses(bad, scene_manifest, Path(tmp) / "tamper-footprint")
