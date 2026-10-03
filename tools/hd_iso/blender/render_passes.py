@@ -10,6 +10,7 @@ from .camera import verify_canonical_camera
 
 CANONICAL_RENDER_WIDTH = 512
 CANONICAL_RENDER_HEIGHT = 512
+CANONICAL_CYCLES_SAMPLES = 64
 
 
 def verify_render_contract(scene) -> dict:
@@ -33,6 +34,12 @@ def verify_render_contract(scene) -> dict:
         )
     if scene.render.film_transparent is not True:
         reasons.append("transparent film is disabled")
+    if scene.render.engine != "CYCLES":
+        reasons.append(f"render engine drift: {scene.render.engine} != CYCLES")
+    if scene.cycles.device != "CPU":
+        reasons.append(f"cycles device drift: {scene.cycles.device} != CPU")
+    if scene.cycles.use_denoising is not False:
+        reasons.append("scene cycles denoising is enabled")
 
     return {
         "status": "PASS" if not reasons else "REFUSE",
@@ -42,13 +49,26 @@ def verify_render_contract(scene) -> dict:
 
 
 def _configure_render(scene) -> None:
-    scene.render.engine = "BLENDER_EEVEE_NEXT"
+    # PRoot Debian on the target Android device cannot safely create the
+    # radeonsi/AMDGPU context required by Eevee. The authoritative proof path
+    # is therefore CPU-only Cycles. This is deliberate production policy, not
+    # a fallback chosen per asset.
+    scene.render.engine = "CYCLES"
+    scene.cycles.device = "CPU"
+    scene.cycles.samples = CANONICAL_CYCLES_SAMPLES
+    scene.cycles.use_denoising = False
     scene.render.resolution_x = CANONICAL_RENDER_WIDTH
     scene.render.resolution_y = CANONICAL_RENDER_HEIGHT
     scene.render.resolution_percentage = 100
     scene.render.film_transparent = True
     scene.render.image_settings.file_format = "PNG"
     scene.render.image_settings.color_mode = "RGBA"
+
+    # Debian's Blender build in the target environment has no OpenImageDenoise
+    # support. Disable view-layer denoising explicitly as well so Blender never
+    # attempts to initialize unavailable denoising kernels.
+    for view_layer in scene.view_layers:
+        view_layer.cycles.use_denoising = False
 
 
 def _material(bpy, name: str, rgba, emission: bool = False):
@@ -102,6 +122,7 @@ def _render_data_passes(bpy, out: Path) -> None:
     layer = bpy.context.view_layer
     layer.use_pass_z = True
     layer.use_pass_normal = True
+    layer.cycles.use_denoising = False
 
     scene.use_nodes = True
     tree = scene.node_tree
@@ -212,6 +233,10 @@ def render_authoritative_passes(bpy, manifest: dict, out_dir: Path | str) -> dic
             "width": CANONICAL_RENDER_WIDTH,
             "height": CANONICAL_RENDER_HEIGHT,
             "transparent": True,
+            "engine": "CYCLES",
+            "device": "CPU",
+            "samples": CANONICAL_CYCLES_SAMPLES,
+            "denoising": False,
         },
         "cameraHash": contract["cameraHash"],
         "anchor": {
