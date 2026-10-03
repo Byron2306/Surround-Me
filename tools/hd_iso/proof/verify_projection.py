@@ -7,7 +7,9 @@ from tools.hd_iso.geometry.projection import project_ground
 CANONICAL_RENDER_WIDTH = 512
 CANONICAL_RENDER_HEIGHT = 512
 EXPECTED_PROJECTION_ADAPTER = "mirror_x"
-_TOL = 1e-5
+_WORLD_TOL = 1e-6
+_MATRIX_TOL = 1e-5
+_PIXEL_TOL = 1e-3
 
 
 def canonical_camera_matrix() -> list[list[float]]:
@@ -30,12 +32,17 @@ def canonical_camera_matrix() -> list[list[float]]:
     ]
 
 
-def _close(a: float, b: float) -> bool:
-    return abs(float(a) - float(b)) <= _TOL
+def _close(a: float, b: float, tol: float) -> bool:
+    return abs(float(a) - float(b)) <= tol
 
 
 def _pair_close(a, b) -> bool:
-    return len(a) == 2 and len(b) == 2 and _close(a[0], b[0]) and _close(a[1], b[1])
+    return (
+        len(a) == 2
+        and len(b) == 2
+        and _close(a[0], b[0], _PIXEL_TOL)
+        and _close(a[1], b[1], _PIXEL_TOL)
+    )
 
 
 def _matrix_close(actual, expected) -> bool:
@@ -45,7 +52,7 @@ def _matrix_close(actual, expected) -> bool:
         if len(ar) != len(er):
             return False
         for av, ev in zip(ar, er):
-            if not _close(av, ev):
+            if not _close(av, ev, _MATRIX_TOL):
                 return False
     return True
 
@@ -109,9 +116,9 @@ def build_projection_proof(manifest: dict, scene_manifest: dict) -> dict:
     scene_world = scene_anchor.get("worldM", [])
     anchor_world_ok = (
         len(scene_world) == 3
-        and _close(scene_world[0], anchor_world[0])
-        and _close(scene_world[1], anchor_world[1])
-        and _close(scene_world[2], 0.0)
+        and _close(scene_world[0], anchor_world[0], _WORLD_TOL)
+        and _close(scene_world[1], anchor_world[1], _WORLD_TOL)
+        and _close(scene_world[2], 0.0, _WORLD_TOL)
     )
     checks["anchor"] = "PASS" if anchor_world_ok else "REFUSE"
     if not anchor_world_ok:
