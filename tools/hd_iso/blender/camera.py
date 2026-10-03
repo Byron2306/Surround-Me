@@ -18,7 +18,10 @@ ORTHO_SCALE = 16.0 * math.sqrt(2.0)
 CAMERA_DISTANCE = 20.0
 GROUND_BASIS_X = (32.0, 16.0)
 GROUND_BASIS_Y = (-32.0, 16.0)
-_TOL = 1e-7
+# Blender stores several camera properties at float precision. Keep the drift
+# verifier tighter than any meaningful camera nudge, but loose enough to accept
+# Blender's round-trip representation of the canonical values.
+_TOL = 1e-6
 
 
 @dataclass(frozen=True)
