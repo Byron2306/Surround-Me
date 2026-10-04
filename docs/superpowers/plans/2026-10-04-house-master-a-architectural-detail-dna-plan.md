@@ -16,7 +16,7 @@ Hard law that may not change in this phase:
 - wall height, roof rise, roof pitch, ridge axis
 - canonical Blender camera
 - projection adapter
-- accepted geometry SHA for seed 18427
+- accepted geometry hashes for seed 18427, with canonical semantic SHA used for downstream chaining
 
 Detail may add only governed objects whose dimensions and placement are derived from existing manifest truth or fixed detail-policy constants.
 
