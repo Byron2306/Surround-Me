@@ -133,7 +133,8 @@ def compare_real_builds(first_root: Path, second_root: Path) -> dict:
 
     return {
         "status": "PASS",
-        "geometryArtifactSha256": geometry_artifact_sha,\n        "geometryCanonicalSha256": geometry_canonical_sha,
+        "geometryArtifactSha256": geometry_artifact_sha,
+        "geometryCanonicalSha256": geometry_canonical_sha,
         "cameraHash": first_scene["cameraHash"],
         "projectionAdapter": first_scene["projectionAdapter"],
         "anchorWorldM": first_scene["anchor"]["worldM"],
