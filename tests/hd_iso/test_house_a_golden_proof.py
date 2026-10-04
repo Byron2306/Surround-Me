@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.hd_iso.compile_geometry import compile_template, manifest_dict  # noqa: E402
+from tools.hd_iso.compile_detail import canonical_detail_json, detail_sha256  # noqa: E402
 from tools.hd_iso.geometry.projection import project_ground  # noqa: E402
 from tools.hd_iso.proof.verify_geometry import build_geometry_proof  # noqa: E402
 from tools.hd_iso.proof.verify_projection import (  # noqa: E402
@@ -145,6 +146,58 @@ def compare_real_builds(first_root: Path, second_root: Path) -> dict:
     }
 
 
+
+def compare_real_detail_builds(first_root: Path, second_root: Path) -> dict:
+    first_detail_path = first_root / "detail.json"
+    second_detail_path = second_root / "detail.json"
+    first_scene_path = first_root / "render" / "scene-manifest.json"
+    second_scene_path = second_root / "render" / "scene-manifest.json"
+    first_proof_path = first_root / "proof" / "proof.json"
+    second_proof_path = second_root / "proof" / "proof.json"
+
+    required = (
+        first_detail_path,
+        second_detail_path,
+        first_scene_path,
+        second_scene_path,
+        first_proof_path,
+        second_proof_path,
+    )
+    missing = [str(path) for path in required if not path.exists()]
+    assert not missing, f"missing detail build evidence: {missing}"
+
+    first_detail = json.loads(first_detail_path.read_text())
+    second_detail = json.loads(second_detail_path.read_text())
+    first_scene = json.loads(first_scene_path.read_text())
+    second_scene = json.loads(second_scene_path.read_text())
+    first_proof = json.loads(first_proof_path.read_text())
+    second_proof = json.loads(second_proof_path.read_text())
+
+    assert canonical_detail_json(first_detail) == canonical_detail_json(second_detail), "canonical detail drift"
+    assert detail_sha256(first_detail) == detail_sha256(second_detail), "detail SHA drift"
+
+    assert first_scene["detail"] == second_scene["detail"], "scene detail receipt drift"
+    assert first_scene["cameraHash"] == second_scene["cameraHash"], "camera hash drift"
+    assert first_scene["projectionAdapter"] == second_scene["projectionAdapter"], "projection adapter drift"
+    assert first_scene["anchor"] == second_scene["anchor"], "anchor drift"
+    assert first_scene["footprintPixel"] == second_scene["footprintPixel"], "footprint projection drift"
+
+    assert first_proof["status"] == "PASS", first_proof
+    assert second_proof["status"] == "PASS", second_proof
+    assert _canonical_proof(first_proof) == _canonical_proof(second_proof), "canonical proof drift"
+
+    return {
+        "status": "PASS",
+        "detailSha256": detail_sha256(first_detail),
+        "detailSeed": first_detail["detailSeed"],
+        "sourceGeometrySha256": first_detail["sourceGeometrySha256"],
+        "sceneDetail": first_scene["detail"],
+        "cameraHash": first_scene["cameraHash"],
+        "projectionAdapter": first_scene["projectionAdapter"],
+        "anchorPixel": first_scene["anchor"]["pixel"],
+        "footprintPixel": first_scene["footprintPixel"],
+    }
+
 def run_synthetic_proof() -> None:
     manifest = manifest_dict(compile_template("house.master.a", structural_seed=18427, root=ROOT))
     scene_manifest = canonical_scene_manifest(manifest)
@@ -201,12 +254,19 @@ def run_synthetic_proof() -> None:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--compare-builds", nargs=2, type=Path, metavar=("FIRST", "SECOND"))
+    parser.add_argument("--compare-detail-builds", nargs=2, type=Path, metavar=("FIRST", "SECOND"))
     args = parser.parse_args(argv)
 
     if args.compare_builds:
         result = compare_real_builds(*args.compare_builds)
         print(json.dumps(result, sort_keys=True))
         print("PASS: House A real-build determinism murder test")
+        return
+
+    if args.compare_detail_builds:
+        result = compare_real_detail_builds(*args.compare_detail_builds)
+        print(json.dumps(result, sort_keys=True))
+        print("PASS: House A architectural-detail determinism murder test")
         return
 
     run_synthetic_proof()
