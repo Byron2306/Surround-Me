@@ -7,6 +7,8 @@ import subprocess
 from pathlib import Path
 
 from .compile_geometry import compile_template, manifest_dict
+from .compile_detail import compile_house_a_detail
+from .detail.validation import validate_house_a_detail
 from .geometry.validation import validate_house_a
 from .proof.calibration_card import write_proof_bundle
 from .proof.verify_geometry import build_geometry_proof
@@ -34,6 +36,11 @@ def _write_manifest(path: Path, manifest) -> None:
     path.write_text(json.dumps(manifest_dict(manifest), indent=2, sort_keys=True) + "\n")
 
 
+def _write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
 def _emit(payload: dict) -> int:
     print(json.dumps(payload, sort_keys=True))
     return 0 if payload.get("status") == "PASS" else 2
@@ -57,7 +64,7 @@ def _compile_and_validate(root: Path, template_id: str, seed: int, geometry_path
     return manifest, None
 
 
-def _run_blender(root: Path, geometry_path: Path, render_dir: Path) -> dict:
+def _run_blender(root: Path, geometry_path: Path, render_dir: Path, detail_path: Path | None = None) -> dict:
     blender = os.environ.get("BLENDER_BIN", "blender")
     expr = (
         "import sys; "
@@ -77,6 +84,8 @@ def _run_blender(root: Path, geometry_path: Path, render_dir: Path) -> dict:
         "--out",
         str(render_dir),
     ]
+    if detail_path is not None:
+        cmd.extend(["--detail-manifest", str(detail_path)])
     try:
         proc = subprocess.run(cmd, cwd=root, text=True, capture_output=True)
     except OSError as exc:
@@ -119,6 +128,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("command", choices=("compile", "validate", "render", "prove", "build"))
     parser.add_argument("template_id")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--detail-seed", type=int)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
 
@@ -140,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
 
     build_root = args.out or _default_build_out(root, args.template_id)
     geometry_path = build_root / "geometry.json"
+    detail_path = build_root / "detail.json"
     render_dir = build_root / "render"
     proof_dir = build_root / "proof"
 
@@ -147,17 +158,34 @@ def main(argv: list[str] | None = None) -> int:
     if refused:
         return _emit(refused)
 
+    detail = None
+    if args.detail_seed is not None:
+        geometry_payload = manifest_dict(manifest)
+        detail = compile_house_a_detail(geometry_payload, args.detail_seed)
+        detail_validation = validate_house_a_detail(geometry_payload, detail)
+        if detail_validation.status != "PASS":
+            return _emit({
+                "status": "REFUSE",
+                "stage": "detail_validate",
+                "reasons": list(detail_validation.reasons),
+            })
+        _write_json(detail_path, detail)
+
     if args.command in ("render", "build"):
-        render_result = _run_blender(root, geometry_path, render_dir)
+        render_result = _run_blender(root, geometry_path, render_dir, detail_path if detail is not None else None)
         if render_result["status"] != "PASS":
             return _emit(render_result)
         if args.command == "render":
-            return _emit({
+            payload = {
                 "status": "PASS",
                 "templateId": args.template_id,
                 "structuralSeed": args.seed,
                 "output": str(render_dir),
-            })
+            }
+            if detail is not None:
+                payload["detailSeed"] = args.detail_seed
+                payload["detail"] = str(detail_path)
+            return _emit(payload)
 
     scene_path = render_dir / "scene-manifest.json"
     if args.command == "prove" and not scene_path.exists():
@@ -167,7 +195,7 @@ def main(argv: list[str] | None = None) -> int:
     if proof_result["status"] != "PASS":
         return _emit(proof_result)
 
-    return _emit({
+    payload = {
         "status": "PASS",
         "templateId": args.template_id,
         "structuralSeed": args.seed,
@@ -175,7 +203,11 @@ def main(argv: list[str] | None = None) -> int:
         "geometry": str(geometry_path),
         "render": str(render_dir),
         "proof": str(proof_dir),
-    })
+    }
+    if detail is not None:
+        payload["detailSeed"] = args.detail_seed
+        payload["detail"] = str(detail_path)
+    return _emit(payload)
 
 
 if __name__ == "__main__":
