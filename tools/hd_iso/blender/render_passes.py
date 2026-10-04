@@ -165,7 +165,13 @@ def _camera_matrix(scene) -> list[list[float]]:
     return [[float(v) for v in row] for row in scene.camera.matrix_world]
 
 
-def render_authoritative_passes(bpy, manifest: dict, out_dir: Path | str) -> dict:
+def render_authoritative_passes(
+    bpy,
+    manifest: dict,
+    out_dir: Path | str,
+    detail_manifest: dict | None = None,
+    detail_objects: dict | None = None,
+) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     scene = bpy.context.scene
@@ -242,6 +248,22 @@ def render_authoritative_passes(bpy, manifest: dict, out_dir: Path | str) -> dic
         "footprintPixel": [_game_pixel(scene, p) for p in footprint_world],
         "footprintBlenderPixel": [_blender_pixel(scene, p) for p in footprint_world],
     }
+    if detail_manifest is not None:
+        if detail_objects is None:
+            return {"status": "REFUSE", "reasons": ["detail objects missing after detail manifest build"]}
+        scene_manifest["detail"] = {
+            "schemaVersion": detail_manifest["schemaVersion"],
+            "detailSeed": int(detail_manifest["detailSeed"]),
+            "sourceGeometrySha256": detail_manifest["sourceGeometrySha256"],
+            "objectCounts": {
+                "windows": len(detail_objects["windows"]),
+                "fascia": len(detail_objects["fascia"]),
+                "gutter": 1,
+                "downpipe": 1,
+                "porch": 1,
+            },
+        }
+
     (out / "scene-manifest.json").write_text(json.dumps(scene_manifest, sort_keys=True, indent=2) + "\n")
 
     final_contract = verify_render_contract(scene)
