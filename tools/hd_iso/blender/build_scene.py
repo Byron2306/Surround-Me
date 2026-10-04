@@ -6,11 +6,13 @@ import sys
 from pathlib import Path
 
 from .build_mesh import build_house_objects
+from .build_detail import build_house_detail_objects
 from .camera import ensure_canonical_camera
+from tools.hd_iso.detail.validation import validate_house_a_detail
 from .render_passes import render_authoritative_passes
 
 
-def build_house_scene(bpy, manifest: dict) -> dict[str, object]:
+def build_house_scene(bpy, manifest: dict, detail_manifest: dict | None = None) -> dict[str, object]:
     """Build the canonical House A Blender scene from validated manifest truth."""
     scene = bpy.context.scene
     camera_proof = ensure_canonical_camera(scene)
@@ -18,18 +20,39 @@ def build_house_scene(bpy, manifest: dict) -> dict[str, object]:
         raise RuntimeError(f"canonical camera refused: {camera_proof.reasons}")
 
     objects = build_house_objects(bpy, manifest)
+    detail_objects = None
+    if detail_manifest is not None:
+        detail_validation = validate_house_a_detail(manifest, detail_manifest)
+        if detail_validation.status != "PASS":
+            raise RuntimeError(f"detail manifest refused: {detail_validation.reasons}")
+        detail_objects = build_house_detail_objects(bpy, manifest, detail_manifest)
     return {
         "scene": scene,
         "cameraProof": camera_proof,
         "objects": objects,
+        "detailObjects": detail_objects,
     }
 
 
-def render_from_manifest(bpy, manifest_path: Path | str, out_dir: Path | str) -> dict:
+def render_from_manifest(
+    bpy,
+    manifest_path: Path | str,
+    out_dir: Path | str,
+    detail_manifest_path: Path | str | None = None,
+) -> dict:
     manifest = json.loads(Path(manifest_path).read_text())
+    detail_manifest = None
+    if detail_manifest_path is not None:
+        detail_manifest = json.loads(Path(detail_manifest_path).read_text())
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    build_house_scene(bpy, manifest)
-    return render_authoritative_passes(bpy, manifest, Path(out_dir))
+    built = build_house_scene(bpy, manifest, detail_manifest)
+    return render_authoritative_passes(
+        bpy,
+        manifest,
+        Path(out_dir),
+        detail_manifest=detail_manifest,
+        detail_objects=built["detailObjects"],
+    )
 
 
 def cli_main(argv: list[str] | None = None) -> int:
@@ -37,11 +60,12 @@ def cli_main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(prog="hd-iso-blender-render")
     parser.add_argument("--manifest", required=True, type=Path)
+    parser.add_argument("--detail-manifest", type=Path)
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args(argv)
 
     try:
-        result = render_from_manifest(bpy, args.manifest, args.out)
+        result = render_from_manifest(bpy, args.manifest, args.out, args.detail_manifest)
     except Exception as exc:
         print(json.dumps({"status": "REFUSE", "reasons": [f"render_exception:{type(exc).__name__}:{exc}"]}))
         return 2
