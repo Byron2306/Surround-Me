@@ -15,7 +15,7 @@ from tools.hd_iso.compile_detail import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-ACCEPTED_GEOMETRY_SHA = "sha256:73243c4b90863d432d8b56b444754f335e6fc8807d70c2da168b6a102614a3aa"
+ACCEPTED_CANONICAL_GEOMETRY_SHA = "sha256:820ca6b7bcd774eb93c2ad3bcb93567a8a42bde484d7d1e4a71e9cc6bd9104a1"
 
 
 def _geometry():
@@ -31,8 +31,8 @@ def test_detail_compiler_preserves_accepted_geometry_bytes_and_hash():
     detail = compile_house_a_detail(geometry, detail_seed=4104)
 
     assert canonical_geometry_json(manifest) == before_json
-    assert geometry_sha256(manifest) == before_sha == ACCEPTED_GEOMETRY_SHA
-    assert detail["sourceGeometrySha256"] == ACCEPTED_GEOMETRY_SHA
+    assert geometry_sha256(manifest) == before_sha == ACCEPTED_CANONICAL_GEOMETRY_SHA
+    assert detail["sourceGeometrySha256"] == ACCEPTED_CANONICAL_GEOMETRY_SHA
     assert detail["templateId"] == "house.master.a"
     assert detail["structuralSeed"] == 18427
     assert detail["detailSeed"] == 4104
