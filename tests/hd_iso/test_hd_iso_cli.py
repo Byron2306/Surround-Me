@@ -82,3 +82,46 @@ def test_build_cli_refuses_when_blender_render_fails(tmp_path):
     payload = json.loads(result.stdout.strip().splitlines()[-1])
     assert payload["status"] == "REFUSE"
     assert payload["reasons"]
+
+
+def test_build_cli_compiles_validates_and_renders_detail_manifest(tmp_path):
+    out = tmp_path / "house-a-detail-build"
+    result = _run(
+        "build",
+        "house.master.a",
+        "--seed",
+        "18427",
+        "--detail-seed",
+        "4104",
+        "--out",
+        str(out),
+    )
+    assert result.returncode == 0, result.stderr
+
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["status"] == "PASS", payload
+    assert payload["structuralSeed"] == 18427
+    assert payload["detailSeed"] == 4104
+    assert payload["detail"] == str(out / "detail.json")
+
+    geometry = json.loads((out / "geometry.json").read_text())
+    detail = json.loads((out / "detail.json").read_text())
+
+    assert geometry["templateId"] == "house.master.a"
+    assert detail["schemaVersion"] == "hd-iso-detail-v1"
+    assert detail["templateId"] == "house.master.a"
+    assert detail["structuralSeed"] == 18427
+    assert detail["detailSeed"] == 4104
+    assert detail["sourceGeometrySha256"] == (
+        "sha256:820ca6b7bcd774eb93c2ad3bcb93567a8a42bde484d7d1e4a71e9cc6bd9104a1"
+    )
+
+    scene = json.loads((out / "render" / "scene-manifest.json").read_text())
+    assert scene["detail"]["schemaVersion"] == "hd-iso-detail-v1"
+    assert scene["detail"]["detailSeed"] == 4104
+    assert scene["detail"]["sourceGeometrySha256"] == detail["sourceGeometrySha256"]
+    assert scene["detail"]["objectCounts"]["windows"] == len(detail["windows"])
+    assert scene["detail"]["objectCounts"]["fascia"] == 2
+    assert scene["detail"]["objectCounts"]["gutter"] == 1
+    assert scene["detail"]["objectCounts"]["downpipe"] == 1
+    assert scene["detail"]["objectCounts"]["porch"] == 1
