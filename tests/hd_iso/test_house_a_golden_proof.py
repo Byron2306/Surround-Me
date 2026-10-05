@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 
 from tools.hd_iso.compile_geometry import compile_template, manifest_dict  # noqa: E402
 from tools.hd_iso.compile_detail import canonical_detail_json, detail_sha256  # noqa: E402
+from tools.hd_iso.compile_surface import canonical_surface_json, surface_sha256  # noqa: E402
 from tools.hd_iso.geometry.projection import project_ground  # noqa: E402
 from tools.hd_iso.proof.verify_geometry import build_geometry_proof  # noqa: E402
 from tools.hd_iso.proof.verify_projection import (  # noqa: E402
@@ -199,6 +200,61 @@ def compare_real_detail_builds(first_root: Path, second_root: Path) -> dict:
         "footprintPixel": first_scene["footprintPixel"],
     }
 
+
+def compare_real_surface_builds(first_root: Path, second_root: Path) -> dict:
+    first_surface_path = first_root / "surface.json"
+    second_surface_path = second_root / "surface.json"
+    first_scene_path = first_root / "render" / "scene-manifest.json"
+    second_scene_path = second_root / "render" / "scene-manifest.json"
+    first_proof_path = first_root / "proof" / "proof.json"
+    second_proof_path = second_root / "proof" / "proof.json"
+
+    required = (
+        first_surface_path,
+        second_surface_path,
+        first_scene_path,
+        second_scene_path,
+        first_proof_path,
+        second_proof_path,
+    )
+    missing = [str(path) for path in required if not path.exists()]
+    assert not missing, f"missing surface build evidence: {missing}"
+
+    first_surface = json.loads(first_surface_path.read_text())
+    second_surface = json.loads(second_surface_path.read_text())
+    first_scene = json.loads(first_scene_path.read_text())
+    second_scene = json.loads(second_scene_path.read_text())
+    first_proof = json.loads(first_proof_path.read_text())
+    second_proof = json.loads(second_proof_path.read_text())
+
+    assert canonical_surface_json(first_surface) == canonical_surface_json(second_surface), "canonical surface drift"
+    assert surface_sha256(first_surface) == surface_sha256(second_surface), "surface SHA drift"
+
+    assert first_scene["surface"] == second_scene["surface"], "scene surface receipt drift"
+    assert first_scene["cameraHash"] == second_scene["cameraHash"], "camera hash drift"
+    assert first_scene["projectionAdapter"] == second_scene["projectionAdapter"], "projection adapter drift"
+    assert first_scene["anchor"] == second_scene["anchor"], "anchor drift"
+    assert first_scene["footprintPixel"] == second_scene["footprintPixel"], "footprint projection drift"
+
+    assert first_proof["status"] == "PASS", first_proof
+    assert second_proof["status"] == "PASS", second_proof
+    assert _canonical_proof(first_proof) == _canonical_proof(second_proof), "canonical proof drift"
+
+    return {
+        "status": "PASS",
+        "surfaceSha256": surface_sha256(first_surface),
+        "appearanceSeed": first_surface["appearanceSeed"],
+        "decaySeed": first_surface["decaySeed"],
+        "sourceGeometrySha256": first_surface["sourceGeometrySha256"],
+        "sourceDetailSha256": first_surface["sourceDetailSha256"],
+        "sceneSurface": first_scene["surface"],
+        "cameraHash": first_scene["cameraHash"],
+        "projectionAdapter": first_scene["projectionAdapter"],
+        "anchorPixel": first_scene["anchor"]["pixel"],
+        "footprintPixel": first_scene["footprintPixel"],
+    }
+
+
 def run_synthetic_proof() -> None:
     manifest = manifest_dict(compile_template("house.master.a", structural_seed=18427, root=ROOT))
     scene_manifest = canonical_scene_manifest(manifest)
@@ -256,6 +312,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--compare-builds", nargs=2, type=Path, metavar=("FIRST", "SECOND"))
     parser.add_argument("--compare-detail-builds", nargs=2, type=Path, metavar=("FIRST", "SECOND"))
+    parser.add_argument("--compare-surface-builds", nargs=2, type=Path, metavar=("FIRST", "SECOND"))
     args = parser.parse_args(argv)
 
     if args.compare_builds:
@@ -268,6 +325,12 @@ def main(argv: list[str] | None = None) -> None:
         result = compare_real_detail_builds(*args.compare_detail_builds)
         print(json.dumps(result, sort_keys=True))
         print("PASS: House A architectural-detail determinism murder test")
+        return
+
+    if args.compare_surface_builds:
+        result = compare_real_surface_builds(*args.compare_surface_builds)
+        print(json.dumps(result, sort_keys=True))
+        print("PASS: House A surface determinism murder test")
         return
 
     run_synthetic_proof()
