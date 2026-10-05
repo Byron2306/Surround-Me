@@ -8,6 +8,7 @@ from pathlib import Path
 from .build_mesh import build_house_objects
 from .build_detail import build_house_detail_objects
 from .build_surface import apply_house_surface
+from .build_surface_fidelity import apply_house_surface_fidelity
 from .camera import ensure_canonical_camera
 from tools.hd_iso.detail.validation import validate_house_a_detail
 from .render_passes import render_authoritative_passes
@@ -18,6 +19,7 @@ def build_house_scene(
     manifest: dict,
     detail_manifest: dict | None = None,
     surface_manifest: dict | None = None,
+    fidelity_manifest: dict | None = None,
 ) -> dict[str, object]:
     """Build the canonical House A Blender scene from validated manifest truth."""
     scene = bpy.context.scene
@@ -41,12 +43,27 @@ def build_house_scene(
             bpy, manifest, detail_manifest, surface_manifest, objects, detail_objects
         )
 
+    fidelity_receipt = None
+    if fidelity_manifest is not None:
+        if surface_manifest is None or detail_manifest is None or detail_objects is None:
+            raise RuntimeError("surface fidelity requires validated surface and detail manifests")
+        fidelity_receipt = apply_house_surface_fidelity(
+            bpy,
+            manifest,
+            detail_manifest,
+            surface_manifest,
+            fidelity_manifest,
+            objects,
+            detail_objects,
+        )
+
     return {
         "scene": scene,
         "cameraProof": camera_proof,
         "objects": objects,
         "detailObjects": detail_objects,
         "surfaceReceipt": surface_receipt,
+        "fidelityReceipt": fidelity_receipt,
     }
 
 
@@ -56,6 +73,7 @@ def render_from_manifest(
     out_dir: Path | str,
     detail_manifest_path: Path | str | None = None,
     surface_manifest_path: Path | str | None = None,
+    fidelity_manifest_path: Path | str | None = None,
 ) -> dict:
     manifest = json.loads(Path(manifest_path).read_text())
     detail_manifest = None
@@ -64,8 +82,17 @@ def render_from_manifest(
     surface_manifest = None
     if surface_manifest_path is not None:
         surface_manifest = json.loads(Path(surface_manifest_path).read_text())
+    fidelity_manifest = None
+    if fidelity_manifest_path is not None:
+        fidelity_manifest = json.loads(Path(fidelity_manifest_path).read_text())
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    built = build_house_scene(bpy, manifest, detail_manifest, surface_manifest)
+    built = build_house_scene(
+        bpy,
+        manifest,
+        detail_manifest,
+        surface_manifest,
+        fidelity_manifest,
+    )
     return render_authoritative_passes(
         bpy,
         manifest,
@@ -74,6 +101,8 @@ def render_from_manifest(
         detail_objects=built["detailObjects"],
         surface_manifest=surface_manifest,
         surface_receipt=built["surfaceReceipt"],
+        fidelity_manifest=fidelity_manifest,
+        fidelity_receipt=built["fidelityReceipt"],
     )
 
 
@@ -84,12 +113,18 @@ def cli_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest", required=True, type=Path)
     parser.add_argument("--detail-manifest", type=Path)
     parser.add_argument("--surface-manifest", type=Path)
+    parser.add_argument("--surface-fidelity-manifest", type=Path)
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args(argv)
 
     try:
         result = render_from_manifest(
-            bpy, args.manifest, args.out, args.detail_manifest, args.surface_manifest
+            bpy,
+            args.manifest,
+            args.out,
+            args.detail_manifest,
+            args.surface_manifest,
+            args.surface_fidelity_manifest,
         )
     except Exception as exc:
         print(json.dumps({"status": "REFUSE", "reasons": [f"render_exception:{type(exc).__name__}:{exc}"]}))
