@@ -169,7 +169,11 @@ def render_authoritative_passes(
     bpy,
     manifest: dict,
     out_dir: Path | str,
-    detail_manifest: dict | None = None,\n    detail_objects: dict | None = None,\n    surface_manifest: dict | None = None,\n    surface_receipt: dict | None = None,\n) -> dict:
+    detail_manifest: dict | None = None,
+    detail_objects: dict | None = None,
+    surface_manifest: dict | None = None,
+    surface_receipt: dict | None = None,
+) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     scene = bpy.context.scene
@@ -185,7 +189,17 @@ def render_authoritative_passes(
 
     _ensure_light(bpy, scene)
 
-    grey = _material(bpy, "HDISO_NEUTRAL_GREY", (0.45, 0.45, 0.45, 1.0))\n    if surface_manifest is None:\n        for obj in meshes:\n            _assign_material(obj, grey)\n    else:\n        # Preserve validated governed materials for the beauty pass. Any mesh\n        # without a surface assignment remains diagnostically neutral.\n        for obj in meshes:\n            if not obj.material_slots:\n                _assign_material(obj, grey)\n    _render_png(bpy, out / "beauty.png")
+    grey = _material(bpy, "HDISO_NEUTRAL_GREY", (0.45, 0.45, 0.45, 1.0))
+    if surface_manifest is None:
+        for obj in meshes:
+            _assign_material(obj, grey)
+    else:
+        # Preserve validated governed materials for the beauty pass. Any mesh
+        # without a surface assignment remains diagnostically neutral.
+        for obj in meshes:
+            if not obj.material_slots:
+                _assign_material(obj, grey)
+    _render_png(bpy, out / "beauty.png")
 
     white = _material(bpy, "HDISO_SILHOUETTE", (1.0, 1.0, 1.0, 1.0), emission=True)
     for obj in meshes:
