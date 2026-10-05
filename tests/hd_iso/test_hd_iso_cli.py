@@ -181,3 +181,53 @@ def test_build_cli_compiles_validates_and_renders_surface_manifest(tmp_path):
     assert scene["surface"]["assignments"]["walls"]["family"] == surface["materials"]["walls"]["family"]
     assert scene["surface"]["assignments"]["roof"]["family"] == surface["materials"]["roof"]["family"]
     assert scene["surface"]["assignments"]["glass"]["state"] == surface["materials"]["glass"]["state"]
+
+
+def test_build_cli_compiles_validates_and_renders_surface_fidelity_manifest(tmp_path):
+    out = tmp_path / "house-a-fidelity-build"
+    result = _run(
+        "build",
+        "house.master.a",
+        "--seed",
+        "18427",
+        "--detail-seed",
+        "4104",
+        "--appearance-seed",
+        "7001",
+        "--decay-seed",
+        "9907",
+        "--fidelity-seed",
+        "27182",
+        "--out",
+        str(out),
+    )
+    assert result.returncode == 0, result.stderr
+
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["status"] == "PASS", payload
+    assert payload["fidelitySeed"] == 27182
+    assert payload["surfaceFidelity"] == str(out / "surface-fidelity.json")
+
+    fidelity = json.loads((out / "surface-fidelity.json").read_text())
+    assert fidelity["schemaVersion"] == "hd-iso-surface-fidelity-v1"
+    assert fidelity["templateId"] == "house.master.a"
+    assert fidelity["fidelitySeed"] == 27182
+    assert fidelity["sourceGeometrySha256"] == (
+        "sha256:820ca6b7bcd774eb93c2ad3bcb93567a8a42bde484d7d1e4a71e9cc6bd9104a1"
+    )
+    assert fidelity["sourceDetailSha256"] == (
+        "sha256:e2f1d4ac85cef2b32db76c424fd11988cf8912afb452b593aeaae81c416308e4"
+    )
+    assert fidelity["sourceSurfaceSha256"] == (
+        "sha256:c32c73d9d82d624f07186089e03e5c029f33aa338e68f7f90bc243434f84aa1b"
+    )
+
+    scene = json.loads((out / "render" / "scene-manifest.json").read_text())
+    assert scene["surfaceFidelity"]["schemaVersion"] == "hd-iso-surface-fidelity-v1"
+    assert scene["surfaceFidelity"]["fidelitySeed"] == 27182
+    assert scene["surfaceFidelity"]["sourceSurfaceSha256"] == fidelity["sourceSurfaceSha256"]
+    assert scene["surfaceFidelity"]["roles"]["walls"]["directionalWeathering"] is True
+    assert scene["surfaceFidelity"]["roles"]["roof"]["directionalWeathering"] is True
+    assert scene["surfaceFidelity"]["roles"]["metal"]["rustClustering"] is True
+    assert scene["surfaceFidelity"]["roles"]["glass"]["layeredHaze"] is True
+    assert scene["surfaceFidelity"]["roles"]["trim"]["grainWear"] is True
