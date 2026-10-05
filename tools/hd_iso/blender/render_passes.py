@@ -173,6 +173,8 @@ def render_authoritative_passes(
     detail_objects: dict | None = None,
     surface_manifest: dict | None = None,
     surface_receipt: dict | None = None,
+    fidelity_manifest: dict | None = None,
+    fidelity_receipt: dict | None = None,
 ) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -283,6 +285,18 @@ def render_authoritative_passes(
             "sourceGeometrySha256": surface_manifest["sourceGeometrySha256"],
             "sourceDetailSha256": surface_manifest["sourceDetailSha256"],
             "assignments": surface_receipt["assignments"],
+        }
+
+    if fidelity_manifest is not None:
+        if fidelity_receipt is None or fidelity_receipt.get("status") != "PASS":
+            return {"status": "REFUSE", "reasons": ["surface fidelity receipt missing or refused"]}
+        scene_manifest["surfaceFidelity"] = {
+            "schemaVersion": fidelity_manifest["schemaVersion"],
+            "fidelitySeed": int(fidelity_manifest["fidelitySeed"]),
+            "sourceGeometrySha256": fidelity_manifest["sourceGeometrySha256"],
+            "sourceDetailSha256": fidelity_manifest["sourceDetailSha256"],
+            "sourceSurfaceSha256": fidelity_manifest["sourceSurfaceSha256"],
+            "roles": fidelity_receipt["roles"],
         }
 
     (out / "scene-manifest.json").write_text(json.dumps(scene_manifest, sort_keys=True, indent=2) + "\n")
