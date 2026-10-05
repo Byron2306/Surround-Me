@@ -9,8 +9,10 @@ from pathlib import Path
 from .compile_geometry import compile_template, manifest_dict
 from .compile_detail import compile_house_a_detail
 from .compile_surface import compile_house_a_surface
+from .compile_surface_fidelity import compile_house_a_surface_fidelity
 from .detail.validation import validate_house_a_detail
 from .surface.validation import validate_house_a_surface
+from .surface_fidelity.validation import validate_house_a_surface_fidelity
 from .geometry.validation import validate_house_a
 from .proof.calibration_card import write_proof_bundle
 from .proof.verify_geometry import build_geometry_proof
@@ -72,6 +74,7 @@ def _run_blender(
     render_dir: Path,
     detail_path: Path | None = None,
     surface_path: Path | None = None,
+    fidelity_path: Path | None = None,
 ) -> dict:
     blender = os.environ.get("BLENDER_BIN", "blender")
     expr = (
@@ -96,6 +99,8 @@ def _run_blender(
         cmd.extend(["--detail-manifest", str(detail_path)])
     if surface_path is not None:
         cmd.extend(["--surface-manifest", str(surface_path)])
+    if fidelity_path is not None:
+        cmd.extend(["--surface-fidelity-manifest", str(fidelity_path)])
     try:
         proc = subprocess.run(cmd, cwd=root, text=True, capture_output=True)
     except OSError as exc:
@@ -141,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--detail-seed", type=int)
     parser.add_argument("--appearance-seed", type=int)
     parser.add_argument("--decay-seed", type=int)
+    parser.add_argument("--fidelity-seed", type=int)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
 
@@ -164,6 +170,7 @@ def main(argv: list[str] | None = None) -> int:
     geometry_path = build_root / "geometry.json"
     detail_path = build_root / "detail.json"
     surface_path = build_root / "surface.json"
+    fidelity_path = build_root / "surface-fidelity.json"
     render_dir = build_root / "render"
     proof_dir = build_root / "proof"
 
@@ -214,6 +221,34 @@ def main(argv: list[str] | None = None) -> int:
             })
         _write_json(surface_path, surface)
 
+    fidelity = None
+    if args.fidelity_seed is not None:
+        if surface is None or detail is None:
+            return _emit({
+                "status": "REFUSE",
+                "stage": "surface_fidelity_compile",
+                "reasons": ["surface_fidelity_requires_surface_manifest"],
+            })
+        fidelity = compile_house_a_surface_fidelity(
+            geometry_payload,
+            detail,
+            surface,
+            fidelity_seed=args.fidelity_seed,
+        )
+        fidelity_validation = validate_house_a_surface_fidelity(
+            geometry_payload,
+            detail,
+            surface,
+            fidelity,
+        )
+        if fidelity_validation.status != "PASS":
+            return _emit({
+                "status": "REFUSE",
+                "stage": "surface_fidelity_validate",
+                "reasons": list(fidelity_validation.reasons),
+            })
+        _write_json(fidelity_path, fidelity)
+
     if args.command in ("render", "build"):
         render_result = _run_blender(
             root,
@@ -221,6 +256,7 @@ def main(argv: list[str] | None = None) -> int:
             render_dir,
             detail_path if detail is not None else None,
             surface_path if surface is not None else None,
+            fidelity_path if fidelity is not None else None,
         )
         if render_result["status"] != "PASS":
             return _emit(render_result)
@@ -238,6 +274,9 @@ def main(argv: list[str] | None = None) -> int:
                 payload["appearanceSeed"] = args.appearance_seed
                 payload["decaySeed"] = args.decay_seed
                 payload["surface"] = str(surface_path)
+            if fidelity is not None:
+                payload["fidelitySeed"] = args.fidelity_seed
+                payload["surfaceFidelity"] = str(fidelity_path)
             return _emit(payload)
 
     scene_path = render_dir / "scene-manifest.json"
@@ -264,6 +303,9 @@ def main(argv: list[str] | None = None) -> int:
         payload["appearanceSeed"] = args.appearance_seed
         payload["decaySeed"] = args.decay_seed
         payload["surface"] = str(surface_path)
+    if fidelity is not None:
+        payload["fidelitySeed"] = args.fidelity_seed
+        payload["surfaceFidelity"] = str(fidelity_path)
     return _emit(payload)
 
 
