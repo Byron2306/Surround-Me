@@ -169,9 +169,7 @@ def render_authoritative_passes(
     bpy,
     manifest: dict,
     out_dir: Path | str,
-    detail_manifest: dict | None = None,
-    detail_objects: dict | None = None,
-) -> dict:
+    detail_manifest: dict | None = None,\n    detail_objects: dict | None = None,\n    surface_manifest: dict | None = None,\n    surface_receipt: dict | None = None,\n) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     scene = bpy.context.scene
@@ -187,10 +185,7 @@ def render_authoritative_passes(
 
     _ensure_light(bpy, scene)
 
-    grey = _material(bpy, "HDISO_NEUTRAL_GREY", (0.45, 0.45, 0.45, 1.0))
-    for obj in meshes:
-        _assign_material(obj, grey)
-    _render_png(bpy, out / "beauty.png")
+    grey = _material(bpy, "HDISO_NEUTRAL_GREY", (0.45, 0.45, 0.45, 1.0))\n    if surface_manifest is None:\n        for obj in meshes:\n            _assign_material(obj, grey)\n    else:\n        # Preserve validated governed materials for the beauty pass. Any mesh\n        # without a surface assignment remains diagnostically neutral.\n        for obj in meshes:\n            if not obj.material_slots:\n                _assign_material(obj, grey)\n    _render_png(bpy, out / "beauty.png")
 
     white = _material(bpy, "HDISO_SILHOUETTE", (1.0, 1.0, 1.0, 1.0), emission=True)
     for obj in meshes:
@@ -262,6 +257,18 @@ def render_authoritative_passes(
                 "downpipe": 1,
                 "porch": 1,
             },
+        }
+
+    if surface_manifest is not None:
+        if surface_receipt is None or surface_receipt.get("status") != "PASS":
+            return {"status": "REFUSE", "reasons": ["surface receipt missing or refused"]}
+        scene_manifest["surface"] = {
+            "schemaVersion": surface_manifest["schemaVersion"],
+            "appearanceSeed": int(surface_manifest["appearanceSeed"]),
+            "decaySeed": int(surface_manifest["decaySeed"]),
+            "sourceGeometrySha256": surface_manifest["sourceGeometrySha256"],
+            "sourceDetailSha256": surface_manifest["sourceDetailSha256"],
+            "assignments": surface_receipt["assignments"],
         }
 
     (out / "scene-manifest.json").write_text(json.dumps(scene_manifest, sort_keys=True, indent=2) + "\n")
