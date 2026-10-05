@@ -125,3 +125,59 @@ def test_build_cli_compiles_validates_and_renders_detail_manifest(tmp_path):
     assert scene["detail"]["objectCounts"]["gutter"] == 1
     assert scene["detail"]["objectCounts"]["downpipe"] == 1
     assert scene["detail"]["objectCounts"]["porch"] == 1
+
+
+def test_build_cli_compiles_validates_and_renders_surface_manifest(tmp_path):
+    out = tmp_path / "house-a-surface-build"
+    result = _run(
+        "build",
+        "house.master.a",
+        "--seed",
+        "18427",
+        "--detail-seed",
+        "4104",
+        "--appearance-seed",
+        "7001",
+        "--decay-seed",
+        "9907",
+        "--out",
+        str(out),
+    )
+    assert result.returncode == 0, result.stderr
+
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["status"] == "PASS", payload
+    assert payload["structuralSeed"] == 18427
+    assert payload["detailSeed"] == 4104
+    assert payload["appearanceSeed"] == 7001
+    assert payload["decaySeed"] == 9907
+    assert payload["surface"] == str(out / "surface.json")
+
+    geometry = json.loads((out / "geometry.json").read_text())
+    detail = json.loads((out / "detail.json").read_text())
+    surface = json.loads((out / "surface.json").read_text())
+
+    assert geometry["templateId"] == "house.master.a"
+    assert detail["schemaVersion"] == "hd-iso-detail-v1"
+    assert surface["schemaVersion"] == "hd-iso-surface-v1"
+    assert surface["templateId"] == "house.master.a"
+    assert surface["structuralSeed"] == 18427
+    assert surface["detailSeed"] == 4104
+    assert surface["appearanceSeed"] == 7001
+    assert surface["decaySeed"] == 9907
+    assert surface["sourceGeometrySha256"] == (
+        "sha256:820ca6b7bcd774eb93c2ad3bcb93567a8a42bde484d7d1e4a71e9cc6bd9104a1"
+    )
+    assert surface["sourceDetailSha256"] == (
+        "sha256:e2f1d4ac85cef2b32db76c424fd11988cf8912afb452b593aeaae81c416308e4"
+    )
+
+    scene = json.loads((out / "render" / "scene-manifest.json").read_text())
+    assert scene["surface"]["schemaVersion"] == "hd-iso-surface-v1"
+    assert scene["surface"]["appearanceSeed"] == 7001
+    assert scene["surface"]["decaySeed"] == 9907
+    assert scene["surface"]["sourceGeometrySha256"] == surface["sourceGeometrySha256"]
+    assert scene["surface"]["sourceDetailSha256"] == surface["sourceDetailSha256"]
+    assert scene["surface"]["assignments"]["walls"]["family"] == surface["materials"]["walls"]["family"]
+    assert scene["surface"]["assignments"]["roof"]["family"] == surface["materials"]["roof"]["family"]
+    assert scene["surface"]["assignments"]["glass"]["state"] == surface["materials"]["glass"]["state"]
