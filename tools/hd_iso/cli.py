@@ -66,7 +66,13 @@ def _compile_and_validate(root: Path, template_id: str, seed: int, geometry_path
     return manifest, None
 
 
-def _run_blender(\n    root: Path,\n    geometry_path: Path,\n    render_dir: Path,\n    detail_path: Path | None = None,\n    surface_path: Path | None = None,\n) -> dict:
+def _run_blender(
+    root: Path,
+    geometry_path: Path,
+    render_dir: Path,
+    detail_path: Path | None = None,
+    surface_path: Path | None = None,
+) -> dict:
     blender = os.environ.get("BLENDER_BIN", "blender")
     expr = (
         "import sys; "
@@ -86,7 +92,10 @@ def _run_blender(\n    root: Path,\n    geometry_path: Path,\n    render_dir: Pa
         "--out",
         str(render_dir),
     ]
-    if detail_path is not None:\n        cmd.extend(["--detail-manifest", str(detail_path)])\n    if surface_path is not None:\n        cmd.extend(["--surface-manifest", str(surface_path)])
+    if detail_path is not None:
+        cmd.extend(["--detail-manifest", str(detail_path)])
+    if surface_path is not None:
+        cmd.extend(["--surface-manifest", str(surface_path)])
     try:
         proc = subprocess.run(cmd, cwd=root, text=True, capture_output=True)
     except OSError as exc:
@@ -129,7 +138,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("command", choices=("compile", "validate", "render", "prove", "build"))
     parser.add_argument("template_id")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--detail-seed", type=int)\n    parser.add_argument("--appearance-seed", type=int)\n    parser.add_argument("--decay-seed", type=int)\n    parser.add_argument("--out", type=Path)
+    parser.add_argument("--detail-seed", type=int)
+    parser.add_argument("--appearance-seed", type=int)
+    parser.add_argument("--decay-seed", type=int)
+    parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
 
     root = _repo_root()
@@ -150,7 +162,9 @@ def main(argv: list[str] | None = None) -> int:
 
     build_root = args.out or _default_build_out(root, args.template_id)
     geometry_path = build_root / "geometry.json"
-    detail_path = build_root / "detail.json"\n    surface_path = build_root / "surface.json"\n    render_dir = build_root / "render"
+    detail_path = build_root / "detail.json"
+    surface_path = build_root / "surface.json"
+    render_dir = build_root / "render"
     proof_dir = build_root / "proof"
 
     manifest, refused = _compile_and_validate(root, args.template_id, args.seed, geometry_path)
@@ -217,7 +231,14 @@ def main(argv: list[str] | None = None) -> int:
                 "structuralSeed": args.seed,
                 "output": str(render_dir),
             }
-            if detail is not None:\n                payload["detailSeed"] = args.detail_seed\n                payload["detail"] = str(detail_path)\n            if surface is not None:\n                payload["appearanceSeed"] = args.appearance_seed\n                payload["decaySeed"] = args.decay_seed\n                payload["surface"] = str(surface_path)\n            return _emit(payload)
+            if detail is not None:
+                payload["detailSeed"] = args.detail_seed
+                payload["detail"] = str(detail_path)
+            if surface is not None:
+                payload["appearanceSeed"] = args.appearance_seed
+                payload["decaySeed"] = args.decay_seed
+                payload["surface"] = str(surface_path)
+            return _emit(payload)
 
     scene_path = render_dir / "scene-manifest.json"
     if args.command == "prove" and not scene_path.exists():
@@ -236,7 +257,14 @@ def main(argv: list[str] | None = None) -> int:
         "render": str(render_dir),
         "proof": str(proof_dir),
     }
-    if detail is not None:\n        payload["detailSeed"] = args.detail_seed\n        payload["detail"] = str(detail_path)\n    if surface is not None:\n        payload["appearanceSeed"] = args.appearance_seed\n        payload["decaySeed"] = args.decay_seed\n        payload["surface"] = str(surface_path)\n    return _emit(payload)
+    if detail is not None:
+        payload["detailSeed"] = args.detail_seed
+        payload["detail"] = str(detail_path)
+    if surface is not None:
+        payload["appearanceSeed"] = args.appearance_seed
+        payload["decaySeed"] = args.decay_seed
+        payload["surface"] = str(surface_path)
+    return _emit(payload)
 
 
 if __name__ == "__main__":
