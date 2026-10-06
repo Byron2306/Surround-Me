@@ -142,6 +142,118 @@ def _render_data_passes(bpy, out: Path) -> None:
     scene.use_nodes = False
 
 
+
+def _image_alpha_pixel_count(bpy, path: Path, threshold: float = 0.5) -> int:
+    image = bpy.data.images.load(str(path), check_existing=False)
+    try:
+        pixels = image.pixels[:]
+        return sum(1 for index in range(3, len(pixels), 4) if pixels[index] >= threshold)
+    finally:
+        bpy.data.images.remove(image)
+
+
+def _render_region_mask(
+    bpy,
+    out_path: Path,
+    meshes,
+    owned_objects,
+    white_material,
+) -> int:
+    owned_names = {obj.name for obj in owned_objects}
+    prior_hidden = {obj.name: bool(obj.hide_render) for obj in meshes}
+
+    try:
+        for obj in meshes:
+            obj.hide_render = obj.name not in owned_names
+            if obj.name in owned_names:
+                _assign_material(obj, white_material)
+
+        _render_png(bpy, out_path)
+    finally:
+        for obj in meshes:
+            obj.hide_render = prior_hidden[obj.name]
+
+    return _image_alpha_pixel_count(bpy, out_path)
+
+
+def _render_structural_mask_bundle(
+    bpy,
+    scene,
+    out: Path,
+    meshes,
+    *,
+    core_objects: dict,
+    detail_objects: dict,
+    camera_hash: str,
+) -> dict:
+    if detail_objects is None:
+        raise RuntimeError("structural mask bundle requires architectural detail objects")
+
+    masks_dir = out / "masks"
+    masks_dir.mkdir(parents=True, exist_ok=True)
+
+    white = _material(
+        bpy,
+        "HDISO_STRUCTURAL_MASK_WHITE",
+        (1.0, 1.0, 1.0, 1.0),
+        emission=True,
+    )
+
+    regions = {
+        "silhouette": list(meshes),
+        "walls": [core_objects["walls"]],
+        "roof": [detail_objects["roofDetail"]],
+        "door": [core_objects["door"]],
+        "windows": list(detail_objects["windows"]),
+        "porch": [detail_objects["porch"]],
+        "fascia": list(detail_objects["fascia"]),
+        "gutter": [detail_objects["gutter"]],
+        "downpipe": [detail_objects["downpipe"]],
+    }
+
+    manifest_regions = {}
+    for name in (
+        "silhouette",
+        "walls",
+        "roof",
+        "door",
+        "windows",
+        "porch",
+        "fascia",
+        "gutter",
+        "downpipe",
+    ):
+        filename = f"{name}.png"
+        path = masks_dir / filename
+        pixel_count = _render_region_mask(
+            bpy,
+            path,
+            meshes,
+            regions[name],
+            white,
+        )
+        if pixel_count <= 0:
+            raise RuntimeError(f"structural mask region is empty: {name}")
+        manifest_regions[name] = {
+            "file": filename,
+            "pixelCount": int(pixel_count),
+            "objects": [obj.name for obj in regions[name]],
+        }
+
+    manifest = {
+        "schemaVersion": "hd-iso-structural-mask-bundle-v1",
+        "templateId": "house.master.a",
+        "width": CANONICAL_RENDER_WIDTH,
+        "height": CANONICAL_RENDER_HEIGHT,
+        "cameraHash": camera_hash,
+        "projectionAdapter": PROJECTION_ADAPTER,
+        "regions": manifest_regions,
+    }
+    (masks_dir / "manifest.json").write_text(
+        json.dumps(manifest, sort_keys=True, indent=2) + "\n"
+    )
+    return manifest
+
 def _blender_pixel(scene, world_xyz) -> list[float]:
     co = world_to_camera_view(scene, scene.camera, Vector(world_xyz))
     return [
@@ -171,6 +283,7 @@ def render_authoritative_passes(
     manifest: dict,
     out_dir: Path | str,
     detail_manifest: dict | None = None,
+    core_objects: dict | None = None,
     detail_objects: dict | None = None,
     surface_manifest: dict | None = None,
     surface_receipt: dict | None = None,
@@ -204,6 +317,23 @@ def render_authoritative_passes(
             if not obj.material_slots:
                 _assign_material(obj, grey)
     _render_png(bpy, out / "beauty.png")
+
+    structural_masks = None
+    if detail_manifest is not None:
+        if core_objects is None or detail_objects is None:
+            return {
+                "status": "REFUSE",
+                "reasons": ["canonical structural mask objects missing"],
+            }
+        structural_masks = _render_structural_mask_bundle(
+            bpy,
+            scene,
+            out,
+            meshes,
+            core_objects=core_objects,
+            detail_objects=detail_objects,
+            camera_hash=contract["cameraHash"],
+        )
 
     white = _material(bpy, "HDISO_SILHOUETTE", (1.0, 1.0, 1.0, 1.0), emission=True)
     for obj in meshes:
@@ -309,6 +439,12 @@ def render_authoritative_passes(
         "exposure": visual_calibration_receipt["exposure"],
         "lights": visual_calibration_receipt["lights"],
     }
+
+    if structural_masks is not None:
+        scene_manifest["structuralMasks"] = {
+            "schemaVersion": structural_masks["schemaVersion"],
+            "manifest": "masks/manifest.json",
+        }
 
     (out / "scene-manifest.json").write_text(json.dumps(scene_manifest, sort_keys=True, indent=2) + "\n")
 
