@@ -214,3 +214,126 @@ def verify_silhouette_masks(
         unique,
         metrics,
     )
+
+
+STRUCTURAL_REGION_MIN_IOU = 0.94
+STRUCTURAL_REGION_MAX_OUTSIDE_RATIO = 0.03
+STRUCTURAL_REGION_MAX_MISSING_RATIO = 0.03
+STRUCTURAL_REGION_MAX_BBOX_DRIFT_PX = 1
+
+
+@dataclass(frozen=True)
+class StructuralRegionVerificationResult:
+    status: Literal["PASS", "REFUSE"]
+    reasons: tuple[str, ...]
+    metrics: dict[str, dict[str, float | list[int]]]
+
+
+def verify_structural_regions(
+    canonical_regions: dict,
+    candidate_regions: dict,
+) -> StructuralRegionVerificationResult:
+    reasons: list[str] = []
+    metrics: dict[str, dict[str, float | list[int]]] = {}
+
+    if not isinstance(canonical_regions, dict) or not isinstance(candidate_regions, dict):
+        return StructuralRegionVerificationResult(
+            "REFUSE",
+            ("structural_region_set_invalid",),
+            {},
+        )
+
+    if set(canonical_regions) != set(candidate_regions):
+        return StructuralRegionVerificationResult(
+            "REFUSE",
+            ("structural_region_set_mismatch",),
+            {},
+        )
+
+    expected_shape = None
+
+    for region_name in sorted(canonical_regions):
+        canonical_mask = canonical_regions[region_name]
+        candidate_mask = candidate_regions[region_name]
+
+        canonical_shape = _shape(canonical_mask)
+        candidate_shape = _shape(candidate_mask)
+
+        if canonical_shape is None or candidate_shape is None:
+            reasons.append("structural_region_mask_invalid")
+            continue
+
+        if expected_shape is None:
+            expected_shape = canonical_shape
+
+        if canonical_shape != expected_shape or candidate_shape != expected_shape:
+            reasons.append("structural_region_canvas_mismatch")
+            continue
+
+        canonical_bbox = _bbox(canonical_mask)
+        candidate_bbox = _bbox(candidate_mask)
+
+        if canonical_bbox is None or candidate_bbox is None:
+            reasons.append("structural_region_empty")
+            continue
+
+        canonical_count = 0
+        candidate_count = 0
+        intersection = 0
+        union = 0
+        outside = 0
+        missing = 0
+
+        height, width = canonical_shape
+        for y in range(height):
+            for x in range(width):
+                canonical = bool(canonical_mask[y][x])
+                candidate = bool(candidate_mask[y][x])
+
+                if canonical:
+                    canonical_count += 1
+                if candidate:
+                    candidate_count += 1
+                if canonical and candidate:
+                    intersection += 1
+                if canonical or candidate:
+                    union += 1
+                if candidate and not canonical:
+                    outside += 1
+                if canonical and not candidate:
+                    missing += 1
+
+        iou = intersection / union if union else 1.0
+        outside_ratio = outside / canonical_count if canonical_count else 1.0
+        missing_ratio = missing / canonical_count if canonical_count else 1.0
+        bbox_drift = [
+            abs(candidate_bbox[i] - canonical_bbox[i])
+            for i in range(4)
+        ]
+
+        metrics[region_name] = {
+            "iou": float(iou),
+            "outsideRatio": float(outside_ratio),
+            "missingRatio": float(missing_ratio),
+            "canonicalVisiblePixels": float(canonical_count),
+            "candidateVisiblePixels": float(candidate_count),
+            "canonicalBBox": list(canonical_bbox),
+            "candidateBBox": list(candidate_bbox),
+            "bboxDrift": bbox_drift,
+        }
+
+        if iou < STRUCTURAL_REGION_MIN_IOU:
+            reasons.append("structural_region_iou_below_minimum")
+        if outside_ratio > STRUCTURAL_REGION_MAX_OUTSIDE_RATIO:
+            reasons.append("structural_region_outside_ratio_above_maximum")
+        if missing_ratio > STRUCTURAL_REGION_MAX_MISSING_RATIO:
+            reasons.append("structural_region_missing_ratio_above_maximum")
+        if any(value > STRUCTURAL_REGION_MAX_BBOX_DRIFT_PX for value in bbox_drift):
+            reasons.append("structural_region_bbox_drift")
+
+    unique = tuple(dict.fromkeys(reasons))
+    return StructuralRegionVerificationResult(
+        "PASS" if not unique else "REFUSE",
+        unique,
+        metrics,
+    )
