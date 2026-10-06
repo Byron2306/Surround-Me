@@ -2754,6 +2754,9 @@ const DIR8_NAMES = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 // CAMERA
 // ============================================================
 const CAMERA_ZOOM = 2.0625; // Adjusted zoom so 1280×720 closely matches the vertical/D2 feel of 1024×768@2.2
+const PLAYER_HEIGHT_M = 1.72;
+const VERTICAL_PX_PER_M = 8 * Math.sqrt(6);
+const PLAYER_SPRITE_H = PLAYER_HEIGHT_M * VERTICAL_PX_PER_M;
 const HOUSE_G1_8_TEST = typeof window !== 'undefined'
     && new URLSearchParams(window.location.search).get('house-test') === '1';
 // Global shake multiplier (can be tuned). Lower to reduce overall camera shake intensity.
@@ -12436,7 +12439,7 @@ function drawPlayer(ctx, sx, sy) {
         ctx.restore();
     }
     if (activeImg) {
-        const spriteH = 80; // render height in px for player sprites
+        const spriteH = PLAYER_SPRITE_H; // projection-bound 1.72m standing height
         // Crop bottom 5% of source to remove green circle artifacts from bg removal
         const srcCropBottom = Math.floor(activeImg.height * 0.05);
         const srcH = activeImg.height - srcCropBottom;
@@ -12562,7 +12565,7 @@ function drawPlayer(ctx, sx, sy) {
     
     // ── DASH GHOST TRAIL — multi-frame afterimages ──
     if (player.state === 'dashing' && activeImg) {
-        const _dSpriteH = 80;
+        const _dSpriteH = PLAYER_SPRITE_H;
         const _dSrcCrop = Math.floor(activeImg.height * 0.05);
         const _dSrcH = activeImg.height - _dSrcCrop;
         const _dSpriteW = _dSpriteH * (activeImg.width / activeImg.height);
