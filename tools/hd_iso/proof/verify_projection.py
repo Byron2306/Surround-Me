@@ -84,9 +84,15 @@ def build_projection_proof(manifest: dict, scene_manifest: dict) -> dict:
     ]
 
     render = scene_manifest.get("render", {})
+    render_scale = int(render.get("renderScale", 1))
+    logical_width = int(render.get("logicalWidth", render.get("width", -1)))
+    logical_height = int(render.get("logicalHeight", render.get("height", -1)))
     render_ok = (
-        int(render.get("width", -1)) == CANONICAL_RENDER_WIDTH
-        and int(render.get("height", -1)) == CANONICAL_RENDER_HEIGHT
+        render_scale >= 1
+        and logical_width == CANONICAL_RENDER_WIDTH
+        and logical_height == CANONICAL_RENDER_HEIGHT
+        and int(render.get("width", -1)) == CANONICAL_RENDER_WIDTH * render_scale
+        and int(render.get("height", -1)) == CANONICAL_RENDER_HEIGHT * render_scale
     )
     if not render_ok:
         reasons.append("render_dimensions_mismatch")
@@ -156,7 +162,10 @@ def build_projection_proof(manifest: dict, scene_manifest: dict) -> dict:
             "anchorWorldM": anchor_world,
             "anchorPixel": expected_anchor_pixel,
             "footprintPixel": expected_footprint_pixel,
-            "render": {"width": CANONICAL_RENDER_WIDTH, "height": CANONICAL_RENDER_HEIGHT},
+            "render": {
+                "logicalWidth": CANONICAL_RENDER_WIDTH,
+                "logicalHeight": CANONICAL_RENDER_HEIGHT,
+            },
             "cameraMatrix": expected_matrix,
             "projectionAdapter": EXPECTED_PROJECTION_ADAPTER,
         },
