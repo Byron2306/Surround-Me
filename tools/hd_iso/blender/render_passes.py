@@ -7,6 +7,7 @@ from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
 from .camera import verify_canonical_camera
+from .lighting import apply_house_a_visual_calibration
 
 CANONICAL_RENDER_WIDTH = 512
 CANONICAL_RENDER_HEIGHT = 512
@@ -190,6 +191,7 @@ def render_authoritative_passes(
         return {"status": "REFUSE", "reasons": ["scene has no mesh objects"]}
 
     _ensure_light(bpy, scene)
+    visual_calibration_receipt = apply_house_a_visual_calibration(bpy, scene, manifest)
 
     grey = _material(bpy, "HDISO_NEUTRAL_GREY", (0.45, 0.45, 0.45, 1.0))
     if surface_manifest is None:
@@ -298,6 +300,15 @@ def render_authoritative_passes(
             "sourceSurfaceSha256": fidelity_manifest["sourceSurfaceSha256"],
             "roles": fidelity_receipt["roles"],
         }
+
+    if visual_calibration_receipt.get("status") != "PASS":
+        return {"status": "REFUSE", "reasons": ["visual calibration receipt missing or refused"]}
+    scene_manifest["visualCalibration"] = {
+        "profile": visual_calibration_receipt["profile"],
+        "world": visual_calibration_receipt["world"],
+        "exposure": visual_calibration_receipt["exposure"],
+        "lights": visual_calibration_receipt["lights"],
+    }
 
     (out / "scene-manifest.json").write_text(json.dumps(scene_manifest, sort_keys=True, indent=2) + "\n")
 
