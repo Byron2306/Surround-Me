@@ -11,6 +11,7 @@ from .build_surface import apply_house_surface
 from .build_surface_fidelity import apply_house_surface_fidelity
 from .camera import ensure_canonical_camera
 from tools.hd_iso.detail.validation import validate_house_a_detail
+from tools.hd_iso.render_config import DEFAULT_RENDER_SCALE
 from .render_passes import render_authoritative_passes
 
 
@@ -74,7 +75,7 @@ def render_from_manifest(
     detail_manifest_path: Path | str | None = None,
     surface_manifest_path: Path | str | None = None,
     fidelity_manifest_path: Path | str | None = None,
-    render_scale: int = 1,
+    render_scale: int = DEFAULT_RENDER_SCALE,
 ) -> dict:
     manifest = json.loads(Path(manifest_path).read_text())
     detail_manifest = None
@@ -118,7 +119,7 @@ def cli_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--surface-manifest", type=Path)
     parser.add_argument("--surface-fidelity-manifest", type=Path)
     parser.add_argument("--out", required=True, type=Path)
-    parser.add_argument("--render-scale", type=int, default=1)
+    parser.add_argument("--render-scale", type=int, default=DEFAULT_RENDER_SCALE)
     args = parser.parse_args(argv)
 
     try:
