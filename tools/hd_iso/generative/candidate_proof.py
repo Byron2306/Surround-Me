@@ -186,6 +186,15 @@ def _refuse(*reasons: str) -> dict:
     return {"status": "REFUSE", "reasons": list(dict.fromkeys(reasons))}
 
 
+def _region_allows_empty_mask(entry: dict) -> bool:
+    """Allow an empty canonical region only when the manifest declares it absent."""
+    return (
+        isinstance(entry, dict)
+        and int(entry.get("pixelCount", -1)) == 0
+        and entry.get("objects") == []
+    )
+
+
 def prove_candidate(
     *,
     candidate_path: Path,
@@ -264,8 +273,13 @@ def prove_candidate(
             return _refuse("mask_region_png_invalid")
         if len(mask) != render_height or len(mask[0]) != render_width:
             return _refuse("mask_region_canvas_mismatch")
-        if not any(any(row) for row in mask):
-            return _refuse("mask_region_empty")
+        has_pixels = any(any(row) for row in mask)
+        if not has_pixels:
+            if not _region_allows_empty_mask(entry):
+                return _refuse("mask_region_empty")
+            continue
+        if _region_allows_empty_mask(entry):
+            return _refuse("mask_region_manifest_mismatch")
         canonical[name] = mask
 
     silhouette = canonical.pop("silhouette")
