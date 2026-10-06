@@ -21,3 +21,6 @@ def test_game_wires_governed_house_a_acceptance_scene():
     assert "maxY: 0.0" in game
 
     assert "[G1.8 HOUSE TEST]" in game
+    assert "installHouseTestMobileControls" in game
+    assert "house-test-mobile-controls" in game
+    assert "HOUSE_G1_8_TEST && s.type !== 'governedHouseA'" in game
