@@ -3507,6 +3507,81 @@ const psychStats = {
 const input = {
     keys: {},
     mouse: { x: 0, y: 0, down: false, clicked: false, rightDown: false, rightClicked: false },
+
+function installHouseTestMobileControls() {
+    if (!HOUSE_G1_8_TEST || typeof document === 'undefined') return;
+    if (document.getElementById('house-test-mobile-controls')) return;
+
+    const wrap = document.createElement('div');
+    wrap.id = 'house-test-mobile-controls';
+    wrap.style.position = 'fixed';
+    wrap.style.left = '18px';
+    wrap.style.bottom = '18px';
+    wrap.style.zIndex = '5000';
+    wrap.style.display = 'grid';
+    wrap.style.gridTemplateColumns = '56px 56px 56px';
+    wrap.style.gridTemplateRows = '56px 56px 56px';
+    wrap.style.gap = '6px';
+    wrap.style.touchAction = 'none';
+    wrap.style.userSelect = 'none';
+    wrap.style.webkitUserSelect = 'none';
+
+    const makeButton = (label, key, col, row) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = label;
+        b.dataset.key = key;
+        b.style.gridColumn = String(col);
+        b.style.gridRow = String(row);
+        b.style.border = '1px solid rgba(230,210,170,0.55)';
+        b.style.borderRadius = '12px';
+        b.style.background = 'rgba(8,8,8,0.72)';
+        b.style.color = 'rgba(245,230,200,0.95)';
+        b.style.font = '700 20px monospace';
+        b.style.touchAction = 'none';
+
+        const down = (e) => {
+            e.preventDefault();
+            input.keys[key] = true;
+            try { b.setPointerCapture?.(e.pointerId); } catch (_) {}
+        };
+        const up = (e) => {
+            e.preventDefault();
+            input.keys[key] = false;
+        };
+
+        b.addEventListener('pointerdown', down);
+        b.addEventListener('pointerup', up);
+        b.addEventListener('pointercancel', up);
+        b.addEventListener('lostpointercapture', up);
+        b.addEventListener('touchstart', down, { passive: false });
+        b.addEventListener('touchend', up, { passive: false });
+        b.addEventListener('touchcancel', up, { passive: false });
+
+        wrap.appendChild(b);
+    };
+
+    makeButton('▲', 'w', 2, 1);
+    makeButton('◀', 'a', 1, 2);
+    makeButton('▶', 'd', 3, 2);
+    makeButton('▼', 's', 2, 3);
+
+    const tag = document.createElement('div');
+    tag.textContent = 'HOUSE TEST';
+    tag.style.gridColumn = '1 / span 3';
+    tag.style.gridRow = '3';
+    tag.style.alignSelf = 'end';
+    tag.style.justifySelf = 'center';
+    tag.style.transform = 'translateY(22px)';
+    tag.style.font = '10px monospace';
+    tag.style.letterSpacing = '1px';
+    tag.style.color = 'rgba(230,210,170,0.75)';
+    tag.style.pointerEvents = 'none';
+    wrap.appendChild(tag);
+
+    document.body.appendChild(wrap);
+}
+
     
     init() {
         // keyboard
@@ -14384,6 +14459,7 @@ function spawnWave() {
 // ============================================================
 async function init() {
     input.init();
+    installHouseTestMobileControls();
     
     // Start title screen immediately
     gameState = GameState.TITLE;
