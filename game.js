@@ -109,6 +109,8 @@ const ASSETS = {
     house1: './house1.png',
     house2: './house2.png',
     house3: './house3.png',
+    // G1.8 governed House A master, 2048 physical / 512 logical canvas.
+    houseAG18Governed: './world-art/hd-iso-v1/runtime/house-master-a-g1-8-governed-2048.png',
     // Environment assets
     deadTree1: 'https://rosebud.ai/assets/dead-tree.webp?1SVp',
     deadTree2: 'https://rosebud.ai/assets/dead-tree-2.webp?eqpz',
@@ -2752,6 +2754,8 @@ const DIR8_NAMES = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 // CAMERA
 // ============================================================
 const CAMERA_ZOOM = 2.0625; // Adjusted zoom so 1280×720 closely matches the vertical/D2 feel of 1024×768@2.2
+const HOUSE_G1_8_TEST = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('house-test') === '1';
 // Global shake multiplier (can be tuned). Lower to reduce overall camera shake intensity.
 const CAMERA_SHAKE_MULTIPLIER = 1.0;
 const camera = {
@@ -2863,6 +2867,14 @@ function isBlockedAt(wx, wy) {
     if (world && world.structures) {
         for (const s of world.structures) {
             if (!s) continue;
+            if (s.collisionBounds) {
+                const b = s.collisionBounds;
+                if (
+                    wx > s.x + b.minX && wx < s.x + b.maxX
+                    && wy > s.y + b.minY && wy < s.y + b.maxY
+                ) return true;
+                continue;
+            }
             if (wx > s.x - 0.5 && wx < s.x + s.w + 0.5 && wy > s.y - 0.5 && wy < s.y + s.h + 0.5) return true;
         }
     }
@@ -3870,6 +3882,33 @@ const world = {
             { x: hubX - 3, y: hubY + 6, w: 2, h: 2, type: 'shack', label: 'Dwelling' },
             { x: hubX + 8, y: hubY - 1, w: 2, h: 3, type: 'storehouse', label: 'Armory' },
         );
+
+        // G1.8 in-game acceptance scene. Enabled only with ?house-test=1.
+        // s.x/s.y is the canonical House A ground anchor, not a top-left corner.
+        if (HOUSE_G1_8_TEST) {
+            this.structures.push({
+                x: hubX + 10,
+                y: hubY + 8,
+                w: 3.75,
+                h: 3.0,
+                type: 'governedHouseA',
+                asset: 'houseAG18Governed',
+                label: '[G1.8 HOUSE TEST]',
+                governedTest: true,
+                governedSprite: {
+                    logicalWidth: 512,
+                    logicalHeight: 512,
+                    anchorPixelX: 220,
+                    anchorPixelY: 334,
+                },
+                collisionBounds: {
+                    minX: -1.875,
+                    maxX: 1.875,
+                    minY: -3.0,
+                    maxY: 0.0,
+                },
+            });
+        }
 
         // Assign randomized house sprites for shack-type structures (house1..house3)
         for (const s of this.structures) {
@@ -11524,6 +11563,36 @@ function renderTerrain(cam) {
 }
 
 function drawStructure(ctx, sx, sy, s) {
+    // G1.8 governed House A path: physical PNG is 2048, but it occupies the
+    // frozen 512x512 logical projection canvas. Draw by canonical ground anchor.
+    if (s.type === 'governedHouseA') {
+        const img = loadedImages[s.asset];
+        if (!img) return;
+
+        const g = s.governedSprite;
+        const w = g.logicalWidth;
+        const h = g.logicalHeight;
+
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.drawImage(
+            img,
+            -g.anchorPixelX,
+            -g.anchorPixelY,
+            w,
+            h
+        );
+
+        if (s.governedTest) {
+            ctx.font = '10px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = 'rgba(230,210,170,0.9)';
+            ctx.fillText('[G1.8 HOUSE TEST]', 0, 20);
+        }
+        ctx.restore();
+        return;
+    }
+
     // Use sprite-based rendering for hub buildings
     const isChapel = s.type === 'chapel';
     // Allow per-structure override (house1..house3) for shacks
