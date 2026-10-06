@@ -8,6 +8,7 @@ from mathutils import Vector
 
 from .camera import verify_canonical_camera
 from .lighting import apply_house_a_visual_calibration
+from tools.hd_iso.render_config import DEFAULT_RENDER_SCALE, MIN_RENDER_SCALE
 
 CANONICAL_RENDER_WIDTH = 512
 CANONICAL_RENDER_HEIGHT = 512
@@ -15,7 +16,7 @@ CANONICAL_CYCLES_SAMPLES = 64
 PROJECTION_ADAPTER = "mirror_x"
 
 
-def verify_render_contract(scene, render_scale: int = 1) -> dict:
+def verify_render_contract(scene, render_scale: int = DEFAULT_RENDER_SCALE) -> dict:
     reasons: list[str] = []
 
     camera_proof = verify_canonical_camera(scene)
@@ -46,7 +47,7 @@ def verify_render_contract(scene, render_scale: int = 1) -> dict:
     }
 
 
-def _configure_render(scene, render_scale: int = 1) -> None:
+def _configure_render(scene, render_scale: int = DEFAULT_RENDER_SCALE) -> None:
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
     scene.cycles.samples = CANONICAL_CYCLES_SAMPLES
@@ -295,13 +296,13 @@ def render_authoritative_passes(
     surface_receipt: dict | None = None,
     fidelity_manifest: dict | None = None,
     fidelity_receipt: dict | None = None,
-    render_scale: int = 1,
+    render_scale: int = DEFAULT_RENDER_SCALE,
 ) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     scene = bpy.context.scene
 
-    if int(render_scale) < 1:
+    if int(render_scale) < MIN_RENDER_SCALE:
         return {"status": "REFUSE", "reasons": ["render_scale_must_be_positive"]}
     _configure_render(scene, render_scale)
     contract = verify_render_contract(scene, render_scale)
