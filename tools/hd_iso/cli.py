@@ -17,6 +17,7 @@ from .geometry.validation import validate_house_a
 from .proof.calibration_card import write_proof_bundle
 from .proof.verify_geometry import build_geometry_proof
 from .proof.verify_projection import build_projection_proof
+from .render_config import DEFAULT_RENDER_SCALE, MIN_RENDER_SCALE
 
 
 def _repo_root() -> Path:
@@ -75,7 +76,7 @@ def _run_blender(
     detail_path: Path | None = None,
     surface_path: Path | None = None,
     fidelity_path: Path | None = None,
-    render_scale: int = 1,
+    render_scale: int = DEFAULT_RENDER_SCALE,
 ) -> dict:
     blender = os.environ.get("BLENDER_BIN", "blender")
     expr = (
@@ -150,13 +151,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--appearance-seed", type=int)
     parser.add_argument("--decay-seed", type=int)
     parser.add_argument("--fidelity-seed", type=int)
-    parser.add_argument("--render-scale", type=int, default=1)
+    parser.add_argument("--render-scale", type=int, default=DEFAULT_RENDER_SCALE)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
 
     root = _repo_root()
 
-    if args.render_scale < 1:
+    if args.render_scale < MIN_RENDER_SCALE:
         return _emit({"status": "REFUSE", "reasons": ["render_scale_must_be_positive"]})
 
     if args.command in ("compile", "validate"):
