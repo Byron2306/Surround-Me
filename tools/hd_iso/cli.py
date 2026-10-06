@@ -75,6 +75,7 @@ def _run_blender(
     detail_path: Path | None = None,
     surface_path: Path | None = None,
     fidelity_path: Path | None = None,
+    render_scale: int = 1,
 ) -> dict:
     blender = os.environ.get("BLENDER_BIN", "blender")
     expr = (
@@ -94,6 +95,8 @@ def _run_blender(
         str(geometry_path),
         "--out",
         str(render_dir),
+        "--render-scale",
+        str(render_scale),
     ]
     if detail_path is not None:
         cmd.extend(["--detail-manifest", str(detail_path)])
@@ -147,10 +150,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--appearance-seed", type=int)
     parser.add_argument("--decay-seed", type=int)
     parser.add_argument("--fidelity-seed", type=int)
+    parser.add_argument("--render-scale", type=int, default=1)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
 
     root = _repo_root()
+
+    if args.render_scale < 1:
+        return _emit({"status": "REFUSE", "reasons": ["render_scale_must_be_positive"]})
 
     if args.command in ("compile", "validate"):
         out = args.out or _default_geometry_out(root, args.template_id)
@@ -257,6 +264,7 @@ def main(argv: list[str] | None = None) -> int:
             detail_path if detail is not None else None,
             surface_path if surface is not None else None,
             fidelity_path if fidelity is not None else None,
+            args.render_scale,
         )
         if render_result["status"] != "PASS":
             return _emit(render_result)
