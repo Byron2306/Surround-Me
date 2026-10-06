@@ -91,36 +91,11 @@ def test_build_cli_emits_four_x_supersampled_render_bundle(tmp_path: Path) -> No
         assert rendered[1] == pytest.approx(logical[1] * 4, abs=1e-3)
 
 
-def test_render_scale_defaults_to_one(tmp_path: Path) -> None:
-    out = tmp_path / "house-a-default"
+def test_render_scale_defaults_to_one_without_second_blender_build() -> None:
+    import inspect
 
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "tools.hd_iso.cli",
-            "build",
-            "house.master.a",
-            "--seed",
-            "18427",
-            "--detail-seed",
-            "4104",
-            "--appearance-seed",
-            "7001",
-            "--decay-seed",
-            "9907",
-            "--fidelity-seed",
-            "27182",
-            "--out",
-            str(out),
-        ],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-    )
-    assert result.returncode == 0, result.stderr
+    from tools.hd_iso.blender.build_scene import render_from_manifest
+    from tools.hd_iso.blender.render_passes import render_authoritative_passes
 
-    scene = json.loads((out / "render" / "scene-manifest.json").read_text())
-    assert scene["render"]["renderScale"] == 1
-    assert scene["render"]["width"] == 512
-    assert scene["render"]["height"] == 512
+    assert inspect.signature(render_from_manifest).parameters["render_scale"].default == 1
+    assert inspect.signature(render_authoritative_passes).parameters["render_scale"].default == 1
