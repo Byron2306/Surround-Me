@@ -74,6 +74,7 @@ def render_from_manifest(
     detail_manifest_path: Path | str | None = None,
     surface_manifest_path: Path | str | None = None,
     fidelity_manifest_path: Path | str | None = None,
+    render_scale: int = 1,
 ) -> dict:
     manifest = json.loads(Path(manifest_path).read_text())
     detail_manifest = None
@@ -104,6 +105,7 @@ def render_from_manifest(
         surface_receipt=built["surfaceReceipt"],
         fidelity_manifest=fidelity_manifest,
         fidelity_receipt=built["fidelityReceipt"],
+        render_scale=render_scale,
     )
 
 
@@ -116,6 +118,7 @@ def cli_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--surface-manifest", type=Path)
     parser.add_argument("--surface-fidelity-manifest", type=Path)
     parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument("--render-scale", type=int, default=1)
     args = parser.parse_args(argv)
 
     try:
@@ -126,6 +129,7 @@ def cli_main(argv: list[str] | None = None) -> int:
             args.detail_manifest,
             args.surface_manifest,
             args.surface_fidelity_manifest,
+            args.render_scale,
         )
     except Exception as exc:
         print(json.dumps({"status": "REFUSE", "reasons": [f"render_exception:{type(exc).__name__}:{exc}"]}))
