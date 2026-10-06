@@ -23,3 +23,15 @@ def test_game_wires_governed_house_a_acceptance_scene():
     assert "[G1.8 HOUSE TEST]" in game
     assert "installHouseTestMobileControls" in game
     assert "house-test-mobile-controls" in game
+
+
+def test_aliza_uses_projection_bound_human_scale():
+    game = (ROOT / "game.js").read_text()
+
+    assert "const PLAYER_HEIGHT_M = 1.72" in game
+    assert "const VERTICAL_PX_PER_M = 8 * Math.sqrt(6)" in game
+    assert "const PLAYER_SPRITE_H = PLAYER_HEIGHT_M * VERTICAL_PX_PER_M" in game
+    assert "const spriteH = PLAYER_SPRITE_H" in game
+    assert "const _dSpriteH = PLAYER_SPRITE_H" in game
+    assert "const spriteH = 80" not in game
+    assert "const _dSpriteH = 80" not in game
