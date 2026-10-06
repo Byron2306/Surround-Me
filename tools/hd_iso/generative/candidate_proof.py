@@ -7,8 +7,8 @@ import zlib
 from pathlib import Path
 
 from tools.hd_iso.generative.compositor import (
+    align_candidate_to_canonical_bbox,
     composite_with_canonical_regions,
-    normalize_candidate_rgba,
 )
 from tools.hd_iso.generative.validation import (
     EXPECTED_CAMERA_HASH,
@@ -236,12 +236,6 @@ def prove_candidate(
     if raw_width != EXPECTED_WIDTH or raw_height != EXPECTED_HEIGHT:
         raw_reasons.append("canvas_size_mismatch")
 
-    normalized = normalize_candidate_rgba(
-        candidate,
-        width=EXPECTED_WIDTH,
-        height=EXPECTED_HEIGHT,
-    )
-
     mask_root = mask_manifest_path.parent
     canonical = {}
     for name in sorted(EXPECTED_REGION_NAMES):
@@ -262,6 +256,17 @@ def prove_candidate(
         canonical[name] = mask
 
     silhouette = canonical.pop("silhouette")
+
+    try:
+        normalized = align_candidate_to_canonical_bbox(
+            candidate,
+            canonical_silhouette=silhouette,
+            width=EXPECTED_WIDTH,
+            height=EXPECTED_HEIGHT,
+        )
+    except ValueError as exc:
+        return _refuse(f"candidate_alignment_failed:{exc}")
+
     governed = composite_with_canonical_regions(
         normalized,
         canonical_silhouette=silhouette,
@@ -286,7 +291,7 @@ def prove_candidate(
         "normalizedCandidate": {
             "width": EXPECTED_WIDTH,
             "height": EXPECTED_HEIGHT,
-            "method": "nearest-neighbor-v1",
+            "method": "alpha-bbox-uniform-fit-nearest-v1",
         },
         "canonicalAuthority": {
             "alpha": "silhouette",
