@@ -327,6 +327,11 @@ def render_authoritative_passes(
                 _assign_material(obj, grey)
     _render_png(bpy, out / "beauty.png")
 
+    # Diagnostic/proof passes do not need path-traced convergence. Keep the
+    # governed beauty pass at canonical quality, then drop proof-only passes
+    # to a single deterministic sample to avoid multiplying supersample cost.
+    scene.cycles.samples = 1
+
     structural_masks = None
     if detail_manifest is not None:
         if core_objects is None or detail_objects is None:
@@ -471,6 +476,8 @@ def render_authoritative_passes(
 
     (out / "scene-manifest.json").write_text(json.dumps(scene_manifest, sort_keys=True, indent=2) + "\n")
 
+    # Restore canonical beauty quality before the final contract check.
+    scene.cycles.samples = CANONICAL_CYCLES_SAMPLES
     final_contract = verify_render_contract(scene, render_scale)
     if final_contract["status"] != "PASS":
         return final_contract
