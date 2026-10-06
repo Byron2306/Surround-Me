@@ -15,17 +15,19 @@ CANONICAL_CYCLES_SAMPLES = 64
 PROJECTION_ADAPTER = "mirror_x"
 
 
-def verify_render_contract(scene) -> dict:
+def verify_render_contract(scene, render_scale: int = 1) -> dict:
     reasons: list[str] = []
 
     camera_proof = verify_canonical_camera(scene)
     if camera_proof.status != "PASS":
         reasons.extend(camera_proof.reasons)
 
-    if scene.render.resolution_x != CANONICAL_RENDER_WIDTH:
-        reasons.append(f"render width drift: {scene.render.resolution_x} != {CANONICAL_RENDER_WIDTH}")
-    if scene.render.resolution_y != CANONICAL_RENDER_HEIGHT:
-        reasons.append(f"render height drift: {scene.render.resolution_y} != {CANONICAL_RENDER_HEIGHT}")
+    expected_width = CANONICAL_RENDER_WIDTH * int(render_scale)
+    expected_height = CANONICAL_RENDER_HEIGHT * int(render_scale)
+    if scene.render.resolution_x != expected_width:
+        reasons.append(f"render width drift: {scene.render.resolution_x} != {expected_width}")
+    if scene.render.resolution_y != expected_height:
+        reasons.append(f"render height drift: {scene.render.resolution_y} != {expected_height}")
     if scene.render.resolution_percentage != 100:
         reasons.append(f"render percentage drift: {scene.render.resolution_percentage} != 100")
     if scene.render.film_transparent is not True:
@@ -44,13 +46,13 @@ def verify_render_contract(scene) -> dict:
     }
 
 
-def _configure_render(scene) -> None:
+def _configure_render(scene, render_scale: int = 1) -> None:
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
     scene.cycles.samples = CANONICAL_CYCLES_SAMPLES
     scene.cycles.use_denoising = False
-    scene.render.resolution_x = CANONICAL_RENDER_WIDTH
-    scene.render.resolution_y = CANONICAL_RENDER_HEIGHT
+    scene.render.resolution_x = CANONICAL_RENDER_WIDTH * int(render_scale)
+    scene.render.resolution_y = CANONICAL_RENDER_HEIGHT * int(render_scale)
     scene.render.resolution_percentage = 100
     scene.render.film_transparent = True
     scene.render.image_settings.file_format = "PNG"
@@ -185,6 +187,7 @@ def _render_structural_mask_bundle(
     core_objects: dict,
     detail_objects: dict,
     camera_hash: str,
+    render_scale: int,
 ) -> dict:
     if detail_objects is None:
         raise RuntimeError("structural mask bundle requires architectural detail objects")
@@ -243,8 +246,11 @@ def _render_structural_mask_bundle(
     manifest = {
         "schemaVersion": "hd-iso-structural-mask-bundle-v1",
         "templateId": "house.master.a",
-        "width": CANONICAL_RENDER_WIDTH,
-        "height": CANONICAL_RENDER_HEIGHT,
+        "logicalWidth": CANONICAL_RENDER_WIDTH,
+        "logicalHeight": CANONICAL_RENDER_HEIGHT,
+        "renderScale": int(render_scale),
+        "width": CANONICAL_RENDER_WIDTH * int(render_scale),
+        "height": CANONICAL_RENDER_HEIGHT * int(render_scale),
         "cameraHash": camera_hash,
         "projectionAdapter": PROJECTION_ADAPTER,
         "regions": manifest_regions,
@@ -289,13 +295,16 @@ def render_authoritative_passes(
     surface_receipt: dict | None = None,
     fidelity_manifest: dict | None = None,
     fidelity_receipt: dict | None = None,
+    render_scale: int = 1,
 ) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     scene = bpy.context.scene
 
-    _configure_render(scene)
-    contract = verify_render_contract(scene)
+    if int(render_scale) < 1:
+        return {"status": "REFUSE", "reasons": ["render_scale_must_be_positive"]}
+    _configure_render(scene, render_scale)
+    contract = verify_render_contract(scene, render_scale)
     if contract["status"] != "PASS":
         return contract
 
@@ -333,6 +342,7 @@ def render_authoritative_passes(
             core_objects=core_objects,
             detail_objects=detail_objects,
             camera_hash=contract["cameraHash"],
+            render_scale=render_scale,
         )
 
     white = _material(bpy, "HDISO_SILHOUETTE", (1.0, 1.0, 1.0, 1.0), emission=True)
@@ -372,8 +382,11 @@ def render_authoritative_passes(
         "templateId": manifest["templateId"],
         "structuralSeed": int(manifest["structuralSeed"]),
         "render": {
-            "width": CANONICAL_RENDER_WIDTH,
-            "height": CANONICAL_RENDER_HEIGHT,
+            "logicalWidth": CANONICAL_RENDER_WIDTH,
+            "logicalHeight": CANONICAL_RENDER_HEIGHT,
+            "renderScale": int(render_scale),
+            "width": CANONICAL_RENDER_WIDTH * int(render_scale),
+            "height": CANONICAL_RENDER_HEIGHT * int(render_scale),
             "transparent": True,
             "engine": "CYCLES",
             "device": "CPU",
@@ -387,9 +400,19 @@ def render_authoritative_passes(
             "worldM": anchor_world,
             "pixel": _game_pixel(scene, anchor_world),
             "blenderPixel": _blender_pixel(scene, anchor_world),
+            "renderPixel": [v * int(render_scale) for v in _game_pixel(scene, anchor_world)],
+            "blenderRenderPixel": [v * int(render_scale) for v in _blender_pixel(scene, anchor_world)],
         },
         "footprintPixel": [_game_pixel(scene, p) for p in footprint_world],
         "footprintBlenderPixel": [_blender_pixel(scene, p) for p in footprint_world],
+        "footprintRenderPixel": [
+            [v * int(render_scale) for v in _game_pixel(scene, p)]
+            for p in footprint_world
+        ],
+        "footprintBlenderRenderPixel": [
+            [v * int(render_scale) for v in _blender_pixel(scene, p)]
+            for p in footprint_world
+        ],
     }
     if detail_manifest is not None:
         if detail_objects is None:
@@ -448,7 +471,7 @@ def render_authoritative_passes(
 
     (out / "scene-manifest.json").write_text(json.dumps(scene_manifest, sort_keys=True, indent=2) + "\n")
 
-    final_contract = verify_render_contract(scene)
+    final_contract = verify_render_contract(scene, render_scale)
     if final_contract["status"] != "PASS":
         return final_contract
 
