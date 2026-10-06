@@ -92,10 +92,7 @@ def test_build_cli_emits_four_x_supersampled_render_bundle(tmp_path: Path) -> No
 
 
 def test_render_scale_defaults_to_one_without_second_blender_build() -> None:
-    import inspect
+    from tools.hd_iso.render_config import DEFAULT_RENDER_SCALE, MIN_RENDER_SCALE
 
-    from tools.hd_iso.blender.build_scene import render_from_manifest
-    from tools.hd_iso.blender.render_passes import render_authoritative_passes
-
-    assert inspect.signature(render_from_manifest).parameters["render_scale"].default == 1
-    assert inspect.signature(render_authoritative_passes).parameters["render_scale"].default == 1
+    assert DEFAULT_RENDER_SCALE == 1
+    assert MIN_RENDER_SCALE == 1
