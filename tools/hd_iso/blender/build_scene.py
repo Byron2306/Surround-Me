@@ -98,6 +98,7 @@ def render_from_manifest(
         manifest,
         Path(out_dir),
         detail_manifest=detail_manifest,
+        core_objects=built["objects"],
         detail_objects=built["detailObjects"],
         surface_manifest=surface_manifest,
         surface_receipt=built["surfaceReceipt"],
