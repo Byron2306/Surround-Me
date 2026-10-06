@@ -3504,10 +3504,6 @@ const psychStats = {
 // ============================================================
 // INPUT
 // ============================================================
-const input = {
-    keys: {},
-    mouse: { x: 0, y: 0, down: false, clicked: false, rightDown: false, rightClicked: false },
-
 function installHouseTestMobileControls() {
     if (!HOUSE_G1_8_TEST || typeof document === 'undefined') return;
     if (document.getElementById('house-test-mobile-controls')) return;
@@ -3582,6 +3578,9 @@ function installHouseTestMobileControls() {
     document.body.appendChild(wrap);
 }
 
+const input = {
+    keys: {},
+    mouse: { x: 0, y: 0, down: false, clicked: false, rightDown: false, rightClicked: false },
     
     init() {
         // keyboard
