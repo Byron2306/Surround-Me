@@ -211,8 +211,21 @@ def prove_candidate(
         reasons.append("mask_schema_mismatch")
     if manifest.get("templateId") != "house.master.a":
         reasons.append("mask_template_mismatch")
-    if manifest.get("width") != EXPECTED_WIDTH or manifest.get("height") != EXPECTED_HEIGHT:
-        reasons.append("mask_canvas_mismatch")
+    logical_width = int(manifest.get("logicalWidth", EXPECTED_WIDTH))
+    logical_height = int(manifest.get("logicalHeight", EXPECTED_HEIGHT))
+    render_scale = int(manifest.get("renderScale", 1))
+    render_width = int(manifest.get("width", -1))
+    render_height = int(manifest.get("height", -1))
+
+    if logical_width != EXPECTED_WIDTH or logical_height != EXPECTED_HEIGHT:
+        reasons.append("mask_logical_canvas_mismatch")
+    if render_scale < 1:
+        reasons.append("mask_render_scale_invalid")
+    if (
+        render_width != logical_width * render_scale
+        or render_height != logical_height * render_scale
+    ):
+        reasons.append("mask_render_dimensions_mismatch")
     if manifest.get("cameraHash") != EXPECTED_CAMERA_HASH:
         reasons.append("mask_camera_hash_mismatch")
     if manifest.get("projectionAdapter") != EXPECTED_PROJECTION_ADAPTER:
@@ -233,7 +246,7 @@ def prove_candidate(
     raw_height = len(candidate)
     raw_width = len(candidate[0])
     raw_reasons = []
-    if raw_width != EXPECTED_WIDTH or raw_height != EXPECTED_HEIGHT:
+    if raw_width != render_width or raw_height != render_height:
         raw_reasons.append("canvas_size_mismatch")
 
     mask_root = mask_manifest_path.parent
@@ -249,7 +262,7 @@ def prove_candidate(
             mask = _mask_from_png(mask_path)
         except Exception:
             return _refuse("mask_region_png_invalid")
-        if len(mask) != EXPECTED_HEIGHT or len(mask[0]) != EXPECTED_WIDTH:
+        if len(mask) != render_height or len(mask[0]) != render_width:
             return _refuse("mask_region_canvas_mismatch")
         if not any(any(row) for row in mask):
             return _refuse("mask_region_empty")
@@ -261,8 +274,8 @@ def prove_candidate(
         normalized = align_candidate_to_canonical_bbox(
             candidate,
             canonical_silhouette=silhouette,
-            width=EXPECTED_WIDTH,
-            height=EXPECTED_HEIGHT,
+            width=render_width,
+            height=render_height,
         )
     except ValueError as exc:
         return _refuse(f"candidate_alignment_failed:{exc}")
@@ -288,9 +301,14 @@ def prove_candidate(
             "height": raw_height,
             "sha256": _sha256_file(candidate_path),
         },
+        "logicalCanvas": {
+            "width": logical_width,
+            "height": logical_height,
+        },
+        "renderScale": render_scale,
         "normalizedCandidate": {
-            "width": EXPECTED_WIDTH,
-            "height": EXPECTED_HEIGHT,
+            "width": render_width,
+            "height": render_height,
             "method": "alpha-bbox-uniform-fit-nearest-v1",
         },
         "canonicalAuthority": {
@@ -302,8 +320,8 @@ def prove_candidate(
         },
         "governedCandidate": {
             "file": governed_path.name,
-            "width": EXPECTED_WIDTH,
-            "height": EXPECTED_HEIGHT,
+            "width": render_width,
+            "height": render_height,
             "sha256": _sha256_file(governed_path),
         },
     }
