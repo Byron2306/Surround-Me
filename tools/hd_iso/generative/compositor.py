@@ -204,3 +204,65 @@ def align_candidate_to_canonical_bbox(
             out[out_y][out_x] = pixel  # type: ignore[assignment]
 
     return out
+
+def _control_point(points: dict, name: str) -> tuple[float, float]:
+    if not isinstance(points, dict) or name not in points or not isinstance(points[name], dict):
+        raise ValueError("candidate_footprint_points_required")
+    try:
+        return float(points[name]["x"]), float(points[name]["y"])
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("candidate_footprint_points_invalid")
+
+
+def align_candidate_to_canonical_footprint(
+    source: Image,
+    *,
+    source_points: dict,
+    target_points: dict,
+    width: int,
+    height: int,
+) -> Image:
+    """Affine-warp donor appearance so three ground-contact points inherit canonical projection."""
+    if width <= 0 or height <= 0:
+        raise ValueError("target dimensions must be positive")
+
+    src_h, src_w = _shape(source)
+    sl = _control_point(source_points, "left")
+    sr = _control_point(source_points, "right")
+    sb = _control_point(source_points, "rear")
+    tl = _control_point(target_points, "left")
+    tr = _control_point(target_points, "right")
+    tb = _control_point(target_points, "rear")
+
+    t10 = (tr[0] - tl[0], tr[1] - tl[1])
+    t20 = (tb[0] - tl[0], tb[1] - tl[1])
+    det = t10[0] * t20[1] - t10[1] * t20[0]
+    sdet = (
+        (sr[0] - sl[0]) * (sb[1] - sl[1])
+        - (sr[1] - sl[1]) * (sb[0] - sl[0])
+    )
+    if abs(det) < 1e-9 or abs(sdet) < 1e-9:
+        raise ValueError("candidate_footprint_points_degenerate")
+
+    s10 = (sr[0] - sl[0], sr[1] - sl[1])
+    s20 = (sb[0] - sl[0], sb[1] - sl[1])
+    out: Image = [[(0, 0, 0, 0) for _ in range(width)] for _ in range(height)]
+
+    for y in range(height):
+        for x in range(width):
+            qx = x - tl[0]
+            qy = y - tl[1]
+            u = (qx * t20[1] - qy * t20[0]) / det
+            v = (t10[0] * qy - t10[1] * qx) / det
+            sx = sl[0] + u * s10[0] + v * s20[0]
+            sy = sl[1] + u * s10[1] + v * s20[1]
+            ix = int(round(sx))
+            iy = int(round(sy))
+            if 0 <= ix < src_w and 0 <= iy < src_h:
+                pixel = tuple(int(value) for value in source[iy][ix])
+                if len(pixel) != 4:
+                    raise ValueError("candidate pixels must be RGBA tuples")
+                out[y][x] = pixel  # type: ignore[assignment]
+
+    return out
+
