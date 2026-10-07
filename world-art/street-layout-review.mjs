@@ -80,6 +80,58 @@ function roadMarking(ctx,x,y,zoom,cell) {
   ctx.restore();
 }
 
+function gutterAndDrain(ctx,x,y,zoom,cell) {
+  const side=cell.gutterEdge;
+  if(!side)return;
+  const hw=(TILE_W/2)*zoom;
+  const hh=(TILE_H/2)*zoom;
+  const inset=Math.max(2,3*zoom);
+  const edges={
+    n:[[x,y-hh+inset],[x+hw-inset*2,y-inset]],
+    e:[[x+hw-inset*2,y+inset],[x,y+hh-inset]],
+    s:[[x,y+hh-inset],[x-hw+inset*2,y+inset]],
+    w:[[x-hw+inset*2,y-inset],[x,y-hh+inset]],
+  };
+  const edge=edges[side];
+  if(!edge)return;
+  const [[x1,y1],[x2,y2]]=edge;
+
+  ctx.strokeStyle='rgba(24,25,26,0.85)';
+  ctx.lineWidth=Math.max(2,2.4*zoom);
+  ctx.beginPath();
+  ctx.moveTo(x1,y1);
+  ctx.lineTo(x2,y2);
+  ctx.stroke();
+
+  if(!cell.stormDrain)return;
+  const mx=(x1+x2)/2, my=(y1+y2)/2;
+  const dx=x2-x1, dy=y2-y1;
+  const len=Math.hypot(dx,dy)||1;
+  const ux=dx/len, uy=dy/len;
+  const px=-uy, py=ux;
+  const half=Math.max(5,5.5*zoom);
+  const depth=Math.max(2,2.6*zoom);
+
+  ctx.fillStyle='rgba(18,19,20,0.98)';
+  ctx.beginPath();
+  ctx.moveTo(mx-ux*half-px*depth,my-uy*half-py*depth);
+  ctx.lineTo(mx+ux*half-px*depth,my+uy*half-py*depth);
+  ctx.lineTo(mx+ux*half+px*depth,my+uy*half+py*depth);
+  ctx.lineTo(mx-ux*half+px*depth,my-uy*half+py*depth);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle='rgba(92,94,94,0.95)';
+  ctx.lineWidth=Math.max(0.8,0.8*zoom);
+  for(let i=-2;i<=2;i++){
+    const along=i*(half/2.4);
+    ctx.beginPath();
+    ctx.moveTo(mx+ux*along-px*depth,my+uy*along-py*depth);
+    ctx.lineTo(mx+ux*along+px*depth,my+uy*along+py*depth);
+    ctx.stroke();
+  }
+}
+
 function curbEdge(ctx,x,y,zoom,side) {
   const hw=(TILE_W/2)*zoom;
   const hh=(TILE_H/2)*zoom;
@@ -166,6 +218,7 @@ export async function renderStreetReview(canvas,options={}) {
     } else {
       drawTexturedDiamond(ctx,concreteImg,p.x,p.y,zoom,cell.role==='curb'?'#66645f':'#555553');
       if(cell.role==='curb'){
+        gutterAndDrain(ctx,p.x,p.y,zoom,cell);
         for(const side of cell.roadSides??[]) curbEdge(ctx,p.x,p.y,zoom,side);
       }
     }
