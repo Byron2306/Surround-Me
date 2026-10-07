@@ -182,6 +182,53 @@ def _sha256_file(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _clear_border_connected_black_matte(image, threshold: int = 3):
+    """Remove only border-connected near-black matte from otherwise opaque donors."""
+    height = len(image)
+    if height <= 0:
+        return image
+    width = len(image[0])
+    if width <= 0:
+        return image
+
+    # Already-transparent donors keep their original alpha semantics.
+    if any(pixel[3] == 0 for row in image for pixel in row):
+        return image
+
+    out = [list(row) for row in image]
+    visited = [[False for _ in range(width)] for _ in range(height)]
+    queue = []
+
+    def enqueue(x: int, y: int) -> None:
+        if x < 0 or x >= width or y < 0 or y >= height or visited[y][x]:
+            return
+        visited[y][x] = True
+        r, g, b, a = out[y][x]
+        if a <= 0 or r > threshold or g > threshold or b > threshold:
+            return
+        queue.append((x, y))
+
+    for x in range(width):
+        enqueue(x, 0)
+        enqueue(x, height - 1)
+    for y in range(height):
+        enqueue(0, y)
+        enqueue(width - 1, y)
+
+    head = 0
+    while head < len(queue):
+        x, y = queue[head]
+        head += 1
+        r, g, b, _a = out[y][x]
+        out[y][x] = (r, g, b, 0)
+        enqueue(x - 1, y)
+        enqueue(x + 1, y)
+        enqueue(x, y - 1)
+        enqueue(x, y + 1)
+
+    return out
+
+
 def _refuse(*reasons: str) -> dict:
     return {"status": "REFUSE", "reasons": list(dict.fromkeys(reasons))}
 
@@ -258,6 +305,8 @@ def prove_candidate(
     if raw_width != render_width or raw_height != render_height:
         raw_reasons.append("canvas_size_mismatch")
 
+    candidate = _clear_border_connected_black_matte(candidate)
+
     mask_root = mask_manifest_path.parent
     canonical = {}
     for name in sorted(EXPECTED_REGION_NAMES):
@@ -323,7 +372,7 @@ def prove_candidate(
         "normalizedCandidate": {
             "width": render_width,
             "height": render_height,
-            "method": "alpha-bbox-uniform-fit-nearest-v1",
+            "method": "border-black-matte-cleanup+alpha-bbox-uniform-fit-nearest-v1",
         },
         "canonicalAuthority": {
             "alpha": "silhouette",
