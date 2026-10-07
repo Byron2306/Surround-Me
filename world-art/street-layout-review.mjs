@@ -347,34 +347,19 @@ async function loadGovernedReviewHouses() {
   };
 }
 
-function drawDriveway(ctx,lot,cx,cy,originX,originY,zoom) {
-  const a=project(lot.driveway.curbX,lot.driveway.curbY,cx,cy,originX,originY,zoom);
-  const b=project(lot.houseSocket.x,lot.houseSocket.y,cx,cy,originX,originY,zoom);
-  const dx=b.x-a.x,dy=b.y-a.y;
-  const len=Math.hypot(dx,dy)||1;
-  const px=-dy/len,py=dx/len;
-  const half=Math.max(7,8*zoom);
-  ctx.save();
-  ctx.fillStyle='rgba(73,70,65,0.96)';
-  ctx.beginPath();
-  ctx.moveTo(a.x+px*half,a.y+py*half);
-  ctx.lineTo(a.x-px*half,a.y-py*half);
-  ctx.lineTo(b.x-px*half,b.y-py*half);
-  ctx.lineTo(b.x+px*half,b.y+py*half);
-  ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle='rgba(126,120,110,0.28)';
-  ctx.lineWidth=Math.max(1,1.1*zoom);
-  ctx.stroke();
-  ctx.strokeStyle='rgba(35,34,32,0.28)';
-  ctx.lineWidth=Math.max(1,1.2*zoom);
-  for(const offset of [-half*.42,half*.42]){
-    ctx.beginPath();
-    ctx.moveTo(a.x+px*offset,a.y+py*offset);
-    ctx.lineTo(b.x+px*offset,b.y+py*offset);
+function drawDriveway(ctx,lot,cx,cy,originX,originY,zoom,concreteImg) {
+  const x=lot.driveway.curbX;
+  const y0=lot.driveway.curbY;
+  const y1=lot.houseSocket.y;
+  const step=y1>=y0?1:-1;
+  for(let y=y0;y!==y1+step;y+=step){
+    const p=project(x,y,cx,cy,originX,originY,zoom);
+    drawTexturedDiamond(ctx,concreteImg,p.x,p.y,zoom,'#514d47');
+    diamondPath(ctx,p.x,p.y,zoom);
+    ctx.strokeStyle='rgba(70,66,61,0.28)';
+    ctx.lineWidth=Math.max(.7,.9*zoom);
     ctx.stroke();
   }
-  ctx.restore();
 }
 
 function drawGovernedHouse(ctx,placement,asset,cx,cy,originX,originY,zoom,debug=false) {
@@ -433,11 +418,12 @@ export async function renderStreetReview(canvas,options={}) {
   const originY=fit.originY;
   const cells=[...layout.cells].sort((a,b)=>(a.x+a.y)-(b.x+b.y)||a.y-b.y||a.x-b.x);
 
-  // Neutral deterministic terrain underlay. Roads/curbs/sidewalks own their art.
+  // Stable neutral underlay for composition review. Keep topology readable
+  // without introducing a second visible tile grid beneath the street system.
   for(let x=cx-12;x<=cx+12;x++){
     for(let y=cy-12;y<=cy+12;y++){
       const p=project(x,y,cx,cy,originX,originY,zoom);
-      drawGroundDiamond(ctx,p.x,p.y,zoom,x,y);
+      drawTexturedDiamond(ctx,dirtImg,p.x,p.y,zoom,'#2a2a28');
     }
   }
 
@@ -461,7 +447,7 @@ export async function renderStreetReview(canvas,options={}) {
 
   const presentation=options.presentation??reviewPresentation(typeof location!=='undefined'?location.search:'');
   for(const lot of layout.lots??[]) {
-    drawDriveway(ctx,lot,cx,cy,originX,originY,zoom);
+    drawDriveway(ctx,lot,cx,cy,originX,originY,zoom,concreteImg);
     if(presentation.debug) drawLotOverlay(ctx,lot,cx,cy,originX,originY,zoom);
   }
 
