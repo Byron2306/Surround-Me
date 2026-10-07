@@ -154,3 +154,18 @@ test('residential lots refuse frontage that crosses another street or junction',
     assert.equal(curb.module,'curb-driveway');
   }
 });
+
+
+test('house socket stays inside its lot at deterministic curb setback', () => {
+  const layout=compileStreetLayout({
+    streets:[{id:'ew',axis:'x',from:{x:0,y:10},to:{x:20,y:10},halfWidth:1}],
+    residential:{streetId:'ew',side:'north',lotDepth:6,lotWidth:5,setback:2},
+  });
+  assert.ok(layout.lots.length>0);
+  for(const lot of layout.lots){
+    assert.ok(lot.houseSocket.x>=lot.bounds.minX && lot.houseSocket.x<=lot.bounds.maxX);
+    assert.ok(lot.houseSocket.y>=lot.bounds.minY && lot.houseSocket.y<=lot.bounds.maxY);
+    assert.equal(lot.houseSocket.y,lot.driveway.curbY-2);
+    assert.equal(lot.houseSocket.facing,'south');
+  }
+});
