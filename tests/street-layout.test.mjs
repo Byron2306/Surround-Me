@@ -32,7 +32,9 @@ test('road cells have priority over curb and sidewalk', () => {
   ]});
   const roles=new Map(layout.cells.map(c=>[`${c.x},${c.y}`,c.role]));
   assert.equal(roles.get('3,0'),'road');
-  assert.notEqual(roles.get('3,-2'),'road');
+  // The north-south segment spans y=-3..3 with halfWidth=1, so (3,-2)
+  // is correctly still carriageway. Probe the first cell beyond its end.
+  assert.notEqual(roles.get('3,-4'),'road');
 });
 
 test('rejects diagonal segment masquerading as horizontal street', () => {
