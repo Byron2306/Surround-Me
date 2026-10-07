@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { residentialCrossroadSpec, streetReviewCells, streetReviewLayout, reviewHousePlacements, computeReviewFit, reviewPresentation, curbRenderProfile } from '../world-art/street-layout-review.mjs';
+import { residentialCrossroadSpec, streetReviewCells, streetReviewLayout, reviewHousePlacements, computeReviewFit, reviewPresentation, curbRenderProfile, depthKey, buildElevatedRenderables, houseProjectionConformance } from '../world-art/street-layout-review.mjs';
 
 test('review spec is a stable two-street crossroad', () => {
   const spec=residentialCrossroadSpec(50,50);
@@ -98,4 +98,30 @@ test('polished driveway is grid-aligned from curb toward house socket', () => {
     assert.equal(lot.driveway.curbX,lot.houseSocket.x);
     assert.notEqual(lot.driveway.curbY,lot.houseSocket.y);
   }
+});
+
+
+test('elevated renderables sort by deterministic ground depth instead of asset type', () => {
+  const layout=streetReviewLayout(50,50);
+  const placements=reviewHousePlacements(layout);
+  const items=buildElevatedRenderables(layout,placements);
+  const sorted=[...items].sort((a,b)=>depthKey(a)-depthKey(b) || a.kind.localeCompare(b.kind));
+  for(let i=1;i<sorted.length;i++) assert.ok(depthKey(sorted[i-1])<=depthKey(sorted[i]));
+  assert.ok(sorted.some(i=>i.kind==='house'));
+  assert.ok(sorted.some(i=>i.kind==='curb-face'));
+});
+
+test('house projection conformance compares visible base axes to 2:1 dimetric street axes', () => {
+  const good=houseProjectionConformance({
+    left:{x:0,y:0},
+    right:{x:64,y:32},
+    rear:{x:64,y:-32},
+  });
+  assert.equal(good.status,'PASS');
+  const bad=houseProjectionConformance({
+    left:{x:0,y:0},
+    right:{x:64,y:10},
+    rear:{x:64,y:-32},
+  });
+  assert.equal(bad.status,'REFUSE');
 });
