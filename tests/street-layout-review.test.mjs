@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { residentialCrossroadSpec, streetReviewCells, streetReviewLayout, reviewHousePlacements, computeReviewFit } from '../world-art/street-layout-review.mjs';
+import { residentialCrossroadSpec, streetReviewCells, streetReviewLayout, reviewHousePlacements, computeReviewFit, reviewPresentation, curbRenderProfile } from '../world-art/street-layout-review.mjs';
 
 test('review spec is a stable two-street crossroad', () => {
   const spec=residentialCrossroadSpec(50,50);
@@ -71,4 +71,22 @@ test('review fit keeps road and governed house visible bounds inside viewport', 
   assert.ok(fit.bounds.maxX*fit.zoom+fit.originX<=1173);
   assert.ok(fit.bounds.minY*fit.zoom+fit.originY>=27);
   assert.ok(fit.bounds.maxY*fit.zoom+fit.originY<=673);
+});
+
+
+test('polished review hides construction overlays unless debug is explicit', () => {
+  assert.deepEqual(reviewPresentation(''),{debug:false});
+  assert.deepEqual(reviewPresentation('?debug=1'),{debug:true});
+  assert.deepEqual(reviewPresentation('?debug=true'),{debug:true});
+});
+
+test('driveway curb renders as lowered ramp while normal curb stays raised', () => {
+  assert.deepEqual(
+    curbRenderProfile({module:'curb-driveway',gutterEdge:'s'}),
+    {raised:false,gutter:false,ramp:true}
+  );
+  assert.deepEqual(
+    curbRenderProfile({module:'curb-straight-s',gutterEdge:'s'}),
+    {raised:true,gutter:true,ramp:false}
+  );
 });
