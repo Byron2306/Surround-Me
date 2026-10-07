@@ -8,11 +8,22 @@ export function residentialCrossroadSpec(cx=50,cy=50) {
       {id:'residential-ew',axis:'x',from:{x:cx-8,y:cy},to:{x:cx+8,y:cy},halfWidth:1},
       {id:'residential-ns',axis:'y',from:{x:cx,y:cy-8},to:{x:cx,y:cy+8},halfWidth:1},
     ],
+    residential:{
+      streetId:'residential-ew',
+      side:'south',
+      lotDepth:4,
+      lotWidth:5,
+      setback:2,
+    },
   };
 }
 
+export function streetReviewLayout(cx=50,cy=50) {
+  return compileStreetLayout(residentialCrossroadSpec(cx,cy));
+}
+
 export function streetReviewCells(cx=50,cy=50) {
-  return compileStreetLayout(residentialCrossroadSpec(cx,cy)).cells;
+  return streetReviewLayout(cx,cy).cells;
 }
 
 const TILE_W=64;
@@ -165,6 +176,44 @@ function curbEdge(ctx,x,y,zoom,side) {
   ctx.stroke();
 }
 
+function drawLotOverlay(ctx,lot,cx,cy,originX,originY,zoom) {
+  const min=project(lot.bounds.minX,lot.bounds.minY,cx,cy,originX,originY,zoom);
+  const max=project(lot.bounds.maxX+1,lot.bounds.maxY+1,cx,cy,originX,originY,zoom);
+  const a=project(lot.bounds.minX,lot.bounds.minY,cx,cy,originX,originY,zoom);
+  const b=project(lot.bounds.maxX+1,lot.bounds.minY,cx,cy,originX,originY,zoom);
+  const d=project(lot.bounds.minX,lot.bounds.maxY+1,cx,cy,originX,originY,zoom);
+  const e=project(lot.bounds.maxX+1,lot.bounds.maxY+1,cx,cy,originX,originY,zoom);
+
+  ctx.save();
+  ctx.strokeStyle='rgba(176,160,118,0.78)';
+  ctx.lineWidth=Math.max(1,1.1*zoom);
+  ctx.setLineDash([6*zoom,4*zoom]);
+  ctx.beginPath();
+  ctx.moveTo(a.x,a.y);
+  ctx.lineTo(b.x,b.y);
+  ctx.lineTo(e.x,e.y);
+  ctx.lineTo(d.x,d.y);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const hs=project(lot.houseSocket.x,lot.houseSocket.y,cx,cy,originX,originY,zoom);
+  ctx.fillStyle='rgba(184,211,191,0.95)';
+  ctx.beginPath();
+  ctx.arc(hs.x,hs.y,Math.max(3,3.5*zoom),0,Math.PI*2);
+  ctx.fill();
+
+  const dw=project(lot.driveway.curbX,lot.driveway.curbY,cx,cy,originX,originY,zoom);
+  ctx.fillStyle='rgba(190,160,100,0.95)';
+  ctx.fillRect(dw.x-4*zoom,dw.y-2*zoom,8*zoom,4*zoom);
+
+  ctx.fillStyle='rgba(225,218,198,0.92)';
+  ctx.font=`${Math.max(9,10*zoom)}px monospace`;
+  ctx.textAlign='center';
+  ctx.fillText(lot.id,hs.x,hs.y-8*zoom);
+  ctx.restore();
+}
+
 function loadImage(src) {
   return new Promise(resolve=>{
     const img=new Image();
@@ -179,7 +228,7 @@ export async function renderStreetReview(canvas,options={}) {
   const cx=options.cx??50;
   const cy=options.cy??50;
   const zoom=options.zoom??1.55;
-  const layout=compileStreetLayout(residentialCrossroadSpec(cx,cy));
+  const layout=streetReviewLayout(cx,cy);
   const [asphaltImg,concreteImg,dirtImg]=await Promise.all([
     loadImage('../asphalt1.png'),
     loadImage('../concrete.png'),
@@ -223,6 +272,8 @@ export async function renderStreetReview(canvas,options={}) {
       }
     }
   }
+
+  for(const lot of layout.lots??[]) drawLotOverlay(ctx,lot,cx,cy,originX,originY,zoom);
 
   ctx.fillStyle='rgba(235,225,205,0.92)';
   ctx.font='14px monospace';
