@@ -39,6 +39,37 @@ export function reviewHousePlacements(layout) {
   }));
 }
 
+export function computeReviewFit(layout,placements,houses,width,height,cx=50,cy=50,margin=28) {
+  const points=[];
+  const push=(x,y)=>points.push({x,y});
+
+  for(const cell of layout.cells??[]){
+    const p=project(cell.x,cell.y,cx,cy,0,0,1);
+    push(p.x-TILE_W/2,p.y-TILE_H/2);
+    push(p.x+TILE_W/2,p.y+TILE_H/2);
+  }
+
+  for(const placement of placements??[]){
+    const asset=houses?.[placement.houseKind];
+    if(!asset?.visibleBounds)continue;
+    const p=project(placement.x,placement.y,cx,cy,0,0,1);
+    push(p.x+asset.visibleBounds.minX,p.y+asset.visibleBounds.minY);
+    push(p.x+asset.visibleBounds.maxX,p.y+asset.visibleBounds.maxY);
+  }
+
+  if(!points.length) return {zoom:1,originX:width/2,originY:height/2,bounds:{minX:0,maxX:0,minY:0,maxY:0}};
+  const minX=Math.min(...points.map(p=>p.x));
+  const maxX=Math.max(...points.map(p=>p.x));
+  const minY=Math.min(...points.map(p=>p.y));
+  const maxY=Math.max(...points.map(p=>p.y));
+  const sceneW=Math.max(1,maxX-minX);
+  const sceneH=Math.max(1,maxY-minY);
+  const zoom=Math.min((width-margin*2)/sceneW,(height-margin*2)/sceneH);
+  const originX=margin-minX*zoom+(width-margin*2-sceneW*zoom)/2;
+  const originY=margin-minY*zoom+(height-margin*2-sceneH*zoom)/2;
+  return {zoom,originX,originY,bounds:{minX,maxX,minY,maxY}};
+}
+
 const TILE_W=64;
 const TILE_H=32;
 
@@ -248,6 +279,7 @@ async function loadGovernedReviewHouses() {
       anchorPixelX:220,
       anchorPixelY:334,
       label:'A-01',
+      visibleBounds:{minX:-95.5,maxX:144,minY:-148.5,maxY:33.25},
     },
     A02:{
       image:variant.image,
@@ -256,6 +288,7 @@ async function loadGovernedReviewHouses() {
       anchorPixelX:variant.metadata.anchorPixelX,
       anchorPixelY:variant.metadata.anchorPixelY,
       label:'A-02',
+      visibleBounds:{minX:-59.5,maxX:156,minY:-142.5,maxY:27.25},
     },
   };
 }
@@ -303,7 +336,7 @@ export async function renderStreetReview(canvas,options={}) {
   if(!canvas?.getContext) throw new Error('review_canvas_required');
   const cx=options.cx??50;
   const cy=options.cy??50;
-  const zoom=options.zoom??1.55;
+  const requestedZoom=options.zoom;
   const layout=streetReviewLayout(cx,cy);
   const [asphaltImg,concreteImg,dirtImg,houses]=await Promise.all([
 
@@ -325,8 +358,13 @@ export async function renderStreetReview(canvas,options={}) {
   ctx.fillStyle='#17191a';
   ctx.fillRect(0,0,width,height);
 
-  const originX=width/2;
-  const originY=height*0.46;
+  const placements=reviewHousePlacements(layout);
+  const fit=requestedZoom
+    ? {zoom:requestedZoom,originX:width/2,originY:height*0.46}
+    : computeReviewFit(layout,placements,houses,width,height,cx,cy,28);
+  const zoom=fit.zoom;
+  const originX=fit.originX;
+  const originY=fit.originY;
   const cells=[...layout.cells].sort((a,b)=>(a.x+a.y)-(b.x+b.y)||a.y-b.y||a.x-b.x);
 
   // underlay makes the review boundary explicit without changing topology
@@ -356,9 +394,9 @@ export async function renderStreetReview(canvas,options={}) {
     drawLotOverlay(ctx,lot,cx,cy,originX,originY,zoom);
   }
 
-  const placements=reviewHousePlacements(layout)
+  const sortedPlacements=[...placements]
     .sort((a,b)=>(a.x+a.y)-(b.x+b.y)||a.y-b.y||a.x-b.x);
-  for(const placement of placements){
+  for(const placement of sortedPlacements){
     drawGovernedHouse(ctx,placement,houses[placement.houseKind],cx,cy,originX,originY,zoom);
   }
 
