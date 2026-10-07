@@ -51,6 +51,36 @@ function drawTexturedDiamond(ctx,img,x,y,zoom,fallback) {
   ctx.restore();
 }
 
+function roadMarking(ctx,x,y,zoom,cell) {
+  const hw=(TILE_W/2)*zoom;
+  const hh=(TILE_H/2)*zoom;
+  ctx.save();
+  ctx.strokeStyle='rgba(201,154,48,0.95)';
+  ctx.lineWidth=Math.max(2,2.2*zoom);
+  ctx.setLineDash([Math.max(5,7*zoom),Math.max(4,6*zoom)]);
+
+  const draw=(x1,y1,x2,y2)=>{
+    ctx.beginPath();
+    ctx.moveTo(x1,y1);
+    ctx.lineTo(x2,y2);
+    ctx.stroke();
+  };
+
+  // Cross/T cells suppress centerlines inside the junction itself.
+  if(cell.variant==='road-cross' || cell.variant.startsWith('road-t-')) {
+    ctx.restore();
+    return;
+  }
+
+  if(cell.variant==='road-ew') {
+    draw(x-hw*0.74,y+hh*0.74,x+hw*0.74,y-hh*0.74);
+  } else if(cell.variant==='road-ns') {
+    draw(x-hw*0.74,y-hh*0.74,x+hw*0.74,y+hh*0.74);
+  }
+
+  ctx.restore();
+}
+
 function curbEdge(ctx,x,y,zoom,side) {
   const hw=(TILE_W/2)*zoom;
   const hh=(TILE_H/2)*zoom;
@@ -99,8 +129,8 @@ export async function renderStreetReview(canvas,options={}) {
   const cy=options.cy??50;
   const zoom=options.zoom??1.55;
   const layout=compileStreetLayout(residentialCrossroadSpec(cx,cy));
-  const [roadImg,concreteImg,dirtImg]=await Promise.all([
-    loadImage('../road1.png'),
+  const [asphaltImg,concreteImg,dirtImg]=await Promise.all([
+    loadImage('../asphalt1.png'),
     loadImage('../concrete.png'),
     loadImage('../asphalt1.png'),
   ]);
@@ -132,7 +162,8 @@ export async function renderStreetReview(canvas,options={}) {
   for(const cell of cells){
     const p=project(cell.x,cell.y,cx,cy,originX,originY,zoom);
     if(cell.role==='road'){
-      drawTexturedDiamond(ctx,roadImg,p.x,p.y,zoom,'#303234');
+      drawTexturedDiamond(ctx,asphaltImg,p.x,p.y,zoom,'#303234');
+      roadMarking(ctx,p.x,p.y,zoom,cell);
     } else {
       drawTexturedDiamond(ctx,concreteImg,p.x,p.y,zoom,cell.role==='curb'?'#66645f':'#555553');
       if(cell.role==='curb'){
