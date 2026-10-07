@@ -138,7 +138,7 @@ function sortedCells(set) {
   return [...set].map(parseKey).sort((a,b) => a.y - b.y || a.x - b.x);
 }
 
-function compileResidentialFrontage(spec, streets, curbCells) {
+function compileResidentialFrontage(spec, streets, curbCells, road) {
   const cfg = spec?.residential;
   if (!cfg) return [];
   const street = streets.find(s => s.id === cfg.streetId);
@@ -168,15 +168,29 @@ function compileResidentialFrontage(spec, streets, curbCells) {
     const centerX=Math.floor((start+end)/2);
     const driveway={curbX:centerX,curbY};
     const houseY=lotNearY + sign*(setback + Math.floor(lotDepth/2));
+    const bounds={
+      minX:start,maxX:end,
+      minY:Math.min(lotNearY, lotNearY + sign*(lotDepth-1)),
+      maxY:Math.max(lotNearY, lotNearY + sign*(lotDepth-1)),
+    };
+
+    const curbByKeyLocal=new Map(curbCells.map(c=>[key(c.x,c.y),c]));
+    const drivewayCurb=curbByKeyLocal.get(key(driveway.curbX,driveway.curbY));
+    if(!drivewayCurb || !drivewayCurb.module.startsWith('curb-straight-')) continue;
+
+    let blocked=false;
+    for(let x=bounds.minX;x<=bounds.maxX && !blocked;x++){
+      for(let y=bounds.minY;y<=bounds.maxY;y++){
+        if(road.has(key(x,y))){ blocked=true; break; }
+      }
+    }
+    if(blocked) continue;
+
     lots.push({
       id:`${street.id}-${cfg.side}-lot-${String(ordinal+1).padStart(2,'0')}`,
       streetId:street.id,
       side:cfg.side,
-      bounds:{
-        minX:start,maxX:end,
-        minY:Math.min(lotNearY, lotNearY + sign*(lotDepth-1)),
-        maxY:Math.max(lotNearY, lotNearY + sign*(lotDepth-1)),
-      },
+      bounds,
       frontage:{fromX:start,toX:end,y:curbY},
       driveway,
       houseSocket:{x:centerX,y:houseY,facing:cfg.side==='south'?'north':'south'},
@@ -267,7 +281,7 @@ export function compileStreetLayout(spec) {
     assetRole: 'groundConcrete',
   }));
 
-  const lots = compileResidentialFrontage(spec, streets, curbCells);
+  const lots = compileResidentialFrontage(spec, streets, curbCells, road);
 
   return {
     schema: 'surround-me-street-layout-v1',
