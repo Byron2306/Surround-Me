@@ -108,9 +108,9 @@ function groundTone(x,y) {
   return `rgb(${48+v},${44+Math.floor(v*.6)},${38+Math.floor(v*.35)})`;
 }
 
-function drawGroundDiamond(ctx,x,y,zoom) {
+function drawGroundDiamond(ctx,x,y,zoom,worldX,worldY) {
   diamondPath(ctx,x,y,zoom);
-  ctx.fillStyle=groundTone(x,y);
+  ctx.fillStyle=groundTone(worldX,worldY);
   ctx.fill();
   ctx.strokeStyle='rgba(20,18,16,0.08)';
   ctx.lineWidth=Math.max(.5,.65*zoom);
