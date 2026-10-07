@@ -12,8 +12,8 @@ test('review spec is a stable two-street crossroad', () => {
     ],
     residential:{
       streetId:'residential-ew',
-      side:'south',
-      lotDepth:4,
+      side:'north',
+      lotDepth:6,
       lotWidth:5,
       setback:2,
     },
@@ -36,4 +36,12 @@ test('review layout exposes house sockets tied to driveway frontage', () => {
   assert.ok(Array.isArray(layout.lots));
   assert.ok(layout.lots.length>=2);
   assert.ok(layout.lots.every(l=>l.houseSocket && l.driveway));
+});
+
+
+test('review house sockets face the street using governed House A orientation', () => {
+  const layout=streetReviewLayout(50,50);
+  assert.ok(layout.lots.length>=2);
+  assert.ok(layout.lots.every(l=>l.side==='north'));
+  assert.ok(layout.lots.every(l=>l.houseSocket.facing==='south'));
 });
