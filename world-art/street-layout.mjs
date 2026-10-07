@@ -138,6 +138,64 @@ function sortedCells(set) {
   return [...set].map(parseKey).sort((a,b) => a.y - b.y || a.x - b.x);
 }
 
+function compileResidentialFrontage(spec, streets, curbCells) {
+  const cfg = spec?.residential;
+  if (!cfg) return [];
+  const street = streets.find(s => s.id === cfg.streetId);
+  if (!street) throw new Error('residential_street_not_found');
+  if (street.axis !== 'x') throw new Error('residential_v1_requires_horizontal_street');
+  if (!['north','south'].includes(cfg.side)) throw new Error('residential_side_invalid');
+
+  const lotWidth = cfg.lotWidth ?? 5;
+  const lotDepth = cfg.lotDepth ?? 4;
+  const setback = cfg.setback ?? 2;
+  for (const [name,v] of [['lotWidth',lotWidth],['lotDepth',lotDepth],['setback',setback]]) {
+    assertInt(v,name);
+    if (v < 1) throw new Error(`${name}_must_be_positive`);
+  }
+
+  const x0=Math.min(street.from.x,street.to.x);
+  const x1=Math.max(street.from.x,street.to.x);
+  const roadEdgeY = street.from.y + (cfg.side === 'south' ? street.halfWidth : -street.halfWidth);
+  const curbY = roadEdgeY + (cfg.side === 'south' ? 1 : -1);
+  const lotNearY = curbY + (cfg.side === 'south' ? 1 : -1);
+  const sign = cfg.side === 'south' ? 1 : -1;
+
+  const lots=[];
+  let ordinal=0;
+  for(let start=x0+1; start+lotWidth-1<=x1-1; start+=lotWidth){
+    const end=start+lotWidth-1;
+    const centerX=Math.floor((start+end)/2);
+    const driveway={curbX:centerX,curbY};
+    const houseY=lotNearY + sign*(setback + Math.floor(lotDepth/2));
+    lots.push({
+      id:`${street.id}-${cfg.side}-lot-${String(ordinal+1).padStart(2,'0')}`,
+      streetId:street.id,
+      side:cfg.side,
+      bounds:{
+        minX:start,maxX:end,
+        minY:Math.min(lotNearY, lotNearY + sign*(lotDepth-1)),
+        maxY:Math.max(lotNearY, lotNearY + sign*(lotDepth-1)),
+      },
+      frontage:{fromX:start,toX:end,y:curbY},
+      driveway,
+      houseSocket:{x:centerX,y:houseY,facing:cfg.side==='south'?'north':'south'},
+    });
+    ordinal++;
+  }
+
+  const curbByKey=new Map(curbCells.map(c=>[key(c.x,c.y),c]));
+  for(const lot of lots){
+    const c=curbByKey.get(key(lot.driveway.curbX,lot.driveway.curbY));
+    if(c && c.module.startsWith('curb-straight-')){
+      c.module='curb-driveway';
+      c.variant='curb-driveway';
+      c.stormDrain=false;
+    }
+  }
+  return lots;
+}
+
 export function compileStreetLayout(spec) {
   if (!spec || typeof spec !== 'object') throw new Error('street_layout_spec_required');
   const tileMeters = spec.tileMeters ?? 2;
@@ -209,15 +267,19 @@ export function compileStreetLayout(spec) {
     assetRole: 'groundConcrete',
   }));
 
+  const lots = compileResidentialFrontage(spec, streets, curbCells);
+
   return {
     schema: 'surround-me-street-layout-v1',
     tileMeters,
     streets,
+    lots,
     cells: [...roadCells, ...curbCells, ...sidewalkCells],
     counts: {
       road: roadCells.length,
       curb: curbCells.length,
       sidewalk: sidewalkCells.length,
+      lots: lots.length,
     },
   };
 }
