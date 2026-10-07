@@ -42,3 +42,18 @@ test('rejects diagonal segment masquerading as horizontal street', () => {
     {id:'bad',axis:'x',from:{x:0,y:0},to:{x:4,y:1},halfWidth:1},
   ]}),/x_street_must_be_horizontal/);
 });
+
+
+test('road cells expose deterministic cardinal connectivity and topology variants', () => {
+  const layout=compileStreetLayout({streets:[
+    {id:'ew',axis:'x',from:{x:-3,y:0},to:{x:3,y:0},halfWidth:0},
+    {id:'ns',axis:'y',from:{x:0,y:-3},to:{x:0,y:3},halfWidth:0},
+  ]});
+  const byKey=new Map(cellsByRole(layout,'road').map(c=>[`${c.x},${c.y}`,c]));
+  assert.equal(byKey.get('0,0').variant,'road-cross');
+  assert.deepEqual(byKey.get('0,0').connections,['n','e','s','w']);
+  assert.equal(byKey.get('2,0').variant,'road-ew');
+  assert.deepEqual(byKey.get('2,0').connections,['e','w']);
+  assert.equal(byKey.get('0,2').variant,'road-ns');
+  assert.deepEqual(byKey.get('0,2').connections,['n','s']);
+});
