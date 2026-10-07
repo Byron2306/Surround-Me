@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -72,16 +73,47 @@ def _fixture(tmp_path: Path, *, render_scale: int = 4):
 
     manifest_path = masks / "manifest.json"
     manifest_path.write_text(json.dumps(manifest))
-    return candidate, manifest_path
+
+    calibration = {
+        "schemaVersion": "hd-iso-donor-footprint-calibration-v2",
+        "variantId": "house.a.02",
+        "source": {
+            "file": candidate.name,
+            "width": 1254,
+            "height": 1254,
+            "sha256": hashlib.sha256(candidate.read_bytes()).hexdigest(),
+        },
+        "contacts": {
+            "rearLeft": {"x": 116, "y": 842, "worldCorner": "x0_yDepth"},
+            "frontLeft": {"x": 552, "y": 1090, "worldCorner": "xWidth_yDepth"},
+            "frontRight": {"x": 1114, "y": 814, "worldCorner": "xWidth_y0"},
+        },
+    }
+    calibration_path = fixture / "calibration.json"
+    calibration_path.write_text(json.dumps(calibration))
+
+    return candidate, manifest_path, calibration_path
+
+
+
+def _variant_contract(tmp_path: Path) -> Path:
+    path = tmp_path / "variant-contract.json"
+    path.write_text(json.dumps({
+        "variantId": "house.a.02",
+        "footprintM": [6.0, 6.0],
+    }))
+    return path
 
 
 def test_four_x_candidate_proof_emits_2048_governed_sprite(tmp_path: Path):
-    candidate, mask_manifest = _fixture(tmp_path, render_scale=4)
+    candidate, mask_manifest, calibration = _fixture(tmp_path, render_scale=4)
     out = tmp_path / "proof"
 
     result = prove_candidate(
         candidate_path=candidate,
         mask_manifest_path=mask_manifest,
+        calibration_path=calibration,
+        variant_contract_path=_variant_contract(tmp_path),
         out_dir=out,
     )
 
@@ -95,7 +127,7 @@ def test_four_x_candidate_proof_emits_2048_governed_sprite(tmp_path: Path):
     assert result["normalizedCandidate"]["width"] == 2048
     assert result["normalizedCandidate"]["height"] == 2048
     assert result["normalizedCandidate"]["method"] == (
-        "alpha-bbox-uniform-fit-nearest-v1"
+        "border-black-matte-cleanup+three-point-footprint-affine-nearest-v1"
     )
 
     governed = result["governedCandidate"]
@@ -109,7 +141,7 @@ def test_four_x_candidate_proof_emits_2048_governed_sprite(tmp_path: Path):
 
 
 def test_supersampled_proof_refuses_inconsistent_mask_dimensions(tmp_path: Path):
-    candidate, mask_manifest = _fixture(tmp_path, render_scale=4)
+    candidate, mask_manifest, calibration = _fixture(tmp_path, render_scale=4)
     manifest = json.loads(mask_manifest.read_text())
     manifest["width"] = 1024
     mask_manifest.write_text(json.dumps(manifest))
@@ -117,6 +149,8 @@ def test_supersampled_proof_refuses_inconsistent_mask_dimensions(tmp_path: Path)
     result = prove_candidate(
         candidate_path=candidate,
         mask_manifest_path=mask_manifest,
+        calibration_path=calibration,
+        variant_contract_path=_variant_contract(tmp_path),
         out_dir=tmp_path / "proof",
     )
 
