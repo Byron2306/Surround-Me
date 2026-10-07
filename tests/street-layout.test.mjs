@@ -73,3 +73,29 @@ test('marking authority comes from street ownership centerlines, not thick-road 
   assert.equal(byKey.get('1,0').marking,'junction');
   assert.equal(byKey.get('0,1').marking,'junction');
 });
+
+
+test('curb cells expose deterministic module type, gutter edge and drain sockets', () => {
+  const layout=compileStreetLayout({streets:[
+    {id:'ew',axis:'x',from:{x:0,y:0},to:{x:12,y:0},halfWidth:1},
+  ]});
+  const curb=cellsByRole(layout,'curb');
+  const north=curb.filter(c=>c.roadSides?.includes('s') && c.module==='curb-straight-s');
+  const south=curb.filter(c=>c.roadSides?.includes('n') && c.module==='curb-straight-n');
+  assert.ok(north.length>0);
+  assert.ok(south.length>0);
+  assert.ok(north.every(c=>c.gutterEdge==='s'));
+  assert.ok(south.every(c=>c.gutterEdge==='n'));
+  assert.ok(curb.some(c=>c.stormDrain===true));
+  assert.ok(curb.filter(c=>c.stormDrain).every(c=>c.module.startsWith('curb-straight-')));
+});
+
+test('curb corners never receive storm drains', () => {
+  const layout=compileStreetLayout({streets:[
+    {id:'ew',axis:'x',from:{x:-4,y:0},to:{x:4,y:0},halfWidth:1},
+    {id:'ns',axis:'y',from:{x:0,y:-4},to:{x:0,y:4},halfWidth:1},
+  ]});
+  const corners=cellsByRole(layout,'curb').filter(c=>c.module.startsWith('curb-corner-'));
+  assert.ok(corners.length>0);
+  assert.ok(corners.every(c=>c.stormDrain===false));
+});
