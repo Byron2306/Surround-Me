@@ -21,3 +21,18 @@ def test_transparent_candidate_is_left_semantically_unchanged():
         [(10,10,10,255),(0,0,0,0)],
     ]
     assert _clear_border_connected_black_matte(image) == image
+
+
+def test_transparent_margin_can_reach_and_clear_inner_black_matte():
+    image = [
+        [(0,0,0,0),(0,0,0,0),(0,0,0,0),(0,0,0,0),(0,0,0,0)],
+        [(0,0,0,0),(0,0,0,255),(0,0,0,255),(0,0,0,255),(0,0,0,0)],
+        [(0,0,0,0),(0,0,0,255),(90,70,50,255),(0,0,0,255),(0,0,0,0)],
+        [(0,0,0,0),(0,0,0,255),(0,0,0,255),(0,0,0,255),(0,0,0,0)],
+        [(0,0,0,0),(0,0,0,0),(0,0,0,0),(0,0,0,0),(0,0,0,0)],
+    ]
+    out = _clear_border_connected_black_matte(image)
+    assert out[1][1][3] == 0
+    assert out[1][2][3] == 0
+    assert out[2][1][3] == 0
+    assert out[2][2] == (90,70,50,255)
