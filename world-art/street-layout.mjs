@@ -102,6 +102,26 @@ function curbVariant(sides) {
   return 'curb-none';
 }
 
+function curbModule(sides) {
+  const s = new Set(sides);
+  if (s.size === 1) return 'curb-straight-' + sides[0];
+  if (s.size === 2) {
+    if (s.has('n') && s.has('s')) return 'curb-channel-ns';
+    if (s.has('e') && s.has('w')) return 'curb-channel-ew';
+    return 'curb-corner-' + [...s].sort().join('');
+  }
+  if (s.size >= 3) return 'curb-junction-' + [...s].sort().join('');
+  return 'curb-none';
+}
+
+function isStormDrainSocket(cell, module) {
+  if (!module.startsWith('curb-straight-')) return false;
+  const side = module.slice('curb-straight-'.length);
+  const along = (side === 'n' || side === 's') ? cell.x : cell.y;
+  // Stable cadence. Offset avoids symmetrical drains colliding at the review origin.
+  return ((along % 6) + 6) % 6 === 2;
+}
+
 function ringOutside(inner, blocked) {
   const out = new Set();
   for (const k of inner) {
@@ -169,12 +189,17 @@ export function compileStreetLayout(spec) {
 
   const curbCells = sortedCells(curb).map(c => {
     const roadSides = cardinalRoadSides(c.x, c.y, road);
+    const module = curbModule(roadSides);
+    const gutterEdge = roadSides.length === 1 ? roadSides[0] : null;
     return {
       ...c,
       role: 'curb',
       assetRole: 'groundConcrete',
       roadSides,
       variant: curbVariant(roadSides),
+      module,
+      gutterEdge,
+      stormDrain: isStormDrainSocket(c, module),
     };
   });
 
