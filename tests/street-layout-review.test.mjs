@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { residentialCrossroadSpec, streetReviewCells } from '../world-art/street-layout-review.mjs';
+import { residentialCrossroadSpec, streetReviewCells, streetReviewLayout } from '../world-art/street-layout-review.mjs';
 
 test('review spec is a stable two-street crossroad', () => {
   const spec=residentialCrossroadSpec(50,50);
@@ -32,8 +32,8 @@ test('review cells preserve deterministic road curb sidewalk priority', () => {
 
 
 test('review layout exposes house sockets tied to driveway frontage', () => {
-  const cells=streetReviewCells(50,50);
-  assert.ok(Array.isArray(cells.lots));
-  assert.ok(cells.lots.length>=2);
-  assert.ok(cells.lots.every(l=>l.houseSocket && l.driveway));
+  const layout=streetReviewLayout(50,50);
+  assert.ok(Array.isArray(layout.lots));
+  assert.ok(layout.lots.length>=2);
+  assert.ok(layout.lots.every(l=>l.houseSocket && l.driveway));
 });
