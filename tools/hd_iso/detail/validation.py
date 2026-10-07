@@ -93,20 +93,27 @@ def validate_house_a_detail(geometry: dict, detail: dict) -> DetailValidationRes
     except (TypeError, ValueError):
         reasons.append("downpipe_diameter_out_of_range")
 
-    porch = detail.get("porch", {})
-    if porch.get("facade") != "FRONT":
-        reasons.append("porch_facade_mismatch")
-    if porch.get("style") not in {"OPEN_FRAME", "TWO_POST"}:
-        reasons.append("porch_style_invalid")
-    try:
-        actual = tuple(float(v) for v in porch.get("boundsM", []))
-        allowed = _porch_allowance(geometry)
-        if len(actual) != 3 or any(v <= 0.0 for v in actual):
+    if detail.get("variantId") != geometry.get("variantId"):
+        reasons.append("variant_identity_mismatch")
+    if not house.get("attachments"):
+        if detail.get("porch") is not None:
+            reasons.append("unexpected_porch")
+    else:
+        porch = detail.get("porch", {})
+        if porch.get("facade") != "FRONT":
+            reasons.append("porch_facade_mismatch")
+        if porch.get("style") not in {"OPEN_FRAME", "TWO_POST"}:
+            reasons.append("porch_style_invalid")
+        try:
+            actual = tuple(float(v) for v in porch.get("boundsM", []))
+            allowed = _porch_allowance(geometry)
+            if len(actual) != 3 or any(v <= 0.0 for v in actual):
+                reasons.append("porch_bounds_invalid")
+            elif any(v > limit + 1e-9 for v, limit in zip(actual, allowed)):
+                reasons.append("porch_outside_allowance")
+        except (TypeError, ValueError):
             reasons.append("porch_bounds_invalid")
-        elif any(v > limit + 1e-9 for v, limit in zip(actual, allowed)):
-            reasons.append("porch_outside_allowance")
-    except (TypeError, ValueError):
-        reasons.append("porch_bounds_invalid")
+
 
     unique = tuple(dict.fromkeys(reasons))
     return DetailValidationResult("PASS" if not unique else "REFUSE", unique)

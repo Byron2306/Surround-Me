@@ -56,6 +56,8 @@ def validate_house_a_surface(
     surface: dict,
 ) -> SurfaceValidationResult:
     reasons: list[str] = []
+    if surface.get("variantId") != geometry.get("variantId"):
+        reasons.append("variant_identity_mismatch")
 
     if surface.get("schemaVersion") != "hd-iso-surface-v1":
         reasons.append("surface_schema_mismatch")

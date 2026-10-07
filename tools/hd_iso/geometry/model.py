@@ -47,3 +47,4 @@ class GeometryManifest:
     template_id: str
     structural_seed: int
     house: HouseGeometry
+    variant_id: str | None = None

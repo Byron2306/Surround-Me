@@ -1,0 +1,37 @@
+{
+  "canonicalAuthority": {
+    "alpha": "silhouette",
+    "cameraHash": "sha256:754dc1d5bec75ea29af7d216c535511d999d882a1576fd3007f2a3f427e027a9",
+    "maskManifestSha256": "sha256:025e9156e11253e44a2d5f112268f8c82e41b73aa03cbdc86788200b71bff638",
+    "projectionAdapter": "mirror_x",
+    "regions": true
+  },
+  "governedCandidate": {
+    "file": "governed-candidate.png",
+    "height": 2048,
+    "sha256": "sha256:a75ba98cf73fe244601c3e8b1f8271bb4e8eae3cdbfb90d8ccdbdb7216a6b0f1",
+    "width": 2048
+  },
+  "logicalCanvas": {
+    "height": 512,
+    "width": 512
+  },
+  "normalizedCandidate": {
+    "height": 2048,
+    "method": "border-black-matte-cleanup+alpha-bbox-uniform-fit-nearest-v1",
+    "width": 2048
+  },
+  "rawCandidate": {
+    "height": 1254,
+    "reasons": [
+      "canvas_size_mismatch"
+    ],
+    "sha256": "sha256:2b00d489c80e22317c066c84d01e0bdf52c630d3ef9fe23f410abf402845634c",
+    "status": "REFUSE",
+    "width": 1254
+  },
+  "renderScale": 4,
+  "schemaVersion": "hd-iso-generative-proof-v1",
+  "status": "PASS",
+  "templateId": "house.master.a"
+}

@@ -89,6 +89,7 @@ def compile_house_a_surface(
     }
 
     return {
+        **({"variantId": geometry["variantId"]} if "variantId" in geometry else {}),
         "schemaVersion": "hd-iso-surface-v1",
         "templateId": "house.master.a",
         "structuralSeed": int(geometry["structuralSeed"]),

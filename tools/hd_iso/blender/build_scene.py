@@ -23,6 +23,11 @@ def build_house_scene(
     fidelity_manifest: dict | None = None,
 ) -> dict[str, object]:
     """Build the canonical House A Blender scene from validated manifest truth."""
+    if "variantId" in manifest:
+        from tools.hd_iso.variants import compile_variant
+        from tools.hd_iso.compile_geometry import manifest_dict
+        if manifest != manifest_dict(compile_variant(manifest["variantId"])[0]):
+            raise RuntimeError("variant geometry differs from governed contract")
     scene = bpy.context.scene
     camera_proof = ensure_canonical_camera(scene)
     if camera_proof.status != "PASS":
@@ -57,6 +62,11 @@ def build_house_scene(
             objects,
             detail_objects,
         )
+
+    if manifest.get("variantId") == "house.a.02" and surface_manifest is not None:
+        from .variant_finish import apply_variant_finish
+        finish=apply_variant_finish(manifest,objects,detail_objects)
+        scene["hdIsoVariantFinish"]=json.dumps(finish,sort_keys=True)
 
     return {
         "scene": scene,

@@ -175,7 +175,8 @@ def apply_house_surface(
         _assign(obj, trim_mat)
     _assign(detail_objects["gutter"], metal_mat)
     _assign(detail_objects["downpipe"], metal_mat)
-    _assign(detail_objects["porch"], trim_mat)
+    if detail_objects["porch"] is not None:
+        _assign(detail_objects["porch"], trim_mat)
 
     return {
         "status": "PASS",
@@ -192,7 +193,7 @@ def apply_house_surface(
                 "objects": [
                     core_objects["door"].name,
                     *[obj.name for obj in detail_objects["fascia"]],
-                    detail_objects["porch"].name,
+                    *([detail_objects["porch"].name] if detail_objects["porch"] is not None else []),
                 ],
             },
             "metal": {

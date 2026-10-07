@@ -82,12 +82,14 @@ def _material(bpy, name: str, rgba, emission: bool = False):
 
 
 def _mesh_objects(scene):
-    return [obj for obj in scene.objects if obj.type == "MESH"]
+    return [obj for obj in scene.objects if obj.type == "MESH" and not obj.hide_render]
 
 
 def _assign_material(obj, mat) -> None:
     obj.data.materials.clear()
     obj.data.materials.append(mat)
+    for polygon in obj.data.polygons:
+        polygon.material_index = 0
 
 
 def _ensure_light(bpy, scene) -> None:
@@ -189,6 +191,7 @@ def _render_structural_mask_bundle(
     detail_objects: dict,
     camera_hash: str,
     render_scale: int,
+    variant_id: str | None = None,
 ) -> dict:
     if detail_objects is None:
         raise RuntimeError("structural mask bundle requires architectural detail objects")
@@ -209,7 +212,7 @@ def _render_structural_mask_bundle(
         "roof": [detail_objects["roofDetail"]],
         "door": [core_objects["door"]],
         "windows": list(detail_objects["windows"]),
-        "porch": [detail_objects["porch"]],
+        "porch": [detail_objects["porch"]] if detail_objects["porch"] is not None else [],
         "fascia": list(detail_objects["fascia"]),
         "gutter": [detail_objects["gutter"]],
         "downpipe": [detail_objects["downpipe"]],
@@ -236,7 +239,7 @@ def _render_structural_mask_bundle(
             regions[name],
             white,
         )
-        if pixel_count <= 0:
+        if pixel_count <= 0 and not (name == "porch" and not regions[name]):
             raise RuntimeError(f"structural mask region is empty: {name}")
         manifest_regions[name] = {
             "file": filename,
@@ -245,6 +248,7 @@ def _render_structural_mask_bundle(
         }
 
     manifest = {
+        **({"variantId": variant_id} if variant_id else {}),
         "schemaVersion": "hd-iso-structural-mask-bundle-v1",
         "templateId": "house.master.a",
         "logicalWidth": CANONICAL_RENDER_WIDTH,
@@ -347,6 +351,7 @@ def render_authoritative_passes(
             meshes,
             core_objects=core_objects,
             detail_objects=detail_objects,
+            variant_id=manifest.get("variantId"),
             camera_hash=contract["cameraHash"],
             render_scale=render_scale,
         )
@@ -384,6 +389,7 @@ def render_authoritative_passes(
     ]
 
     scene_manifest = {
+        **({"variantId": manifest["variantId"]} if "variantId" in manifest else {}),
         "schemaVersion": "hd-iso-scene-manifest-v1",
         "templateId": manifest["templateId"],
         "structuralSeed": int(manifest["structuralSeed"]),
@@ -432,7 +438,7 @@ def render_authoritative_passes(
                 "fascia": len(detail_objects["fascia"]),
                 "gutter": 1,
                 "downpipe": 1,
-                "porch": 1,
+                "porch": int(detail_objects["porch"] is not None),
             },
         }
 
@@ -475,6 +481,13 @@ def render_authoritative_passes(
             "manifest": "masks/manifest.json",
         }
 
+    if manifest.get("variantId"):
+        scene.cycles.samples = CANONICAL_CYCLES_SAMPLES
+        if scene.get("hdIsoVariantFinish") is not None:
+            scene_manifest["variantFinish"] = json.loads(scene["hdIsoVariantFinish"])
+        scene_manifest["renderContract"] = verify_render_contract(scene, render_scale)
+        if scene_manifest["renderContract"]["status"] != "PASS":
+            return scene_manifest["renderContract"]
     (out / "scene-manifest.json").write_text(json.dumps(scene_manifest, sort_keys=True, indent=2) + "\n")
 
     # Restore canonical beauty quality before the final contract check.

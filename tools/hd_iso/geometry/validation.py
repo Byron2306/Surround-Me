@@ -77,7 +77,7 @@ def validate_house_a(manifest: GeometryManifest, template: dict) -> ValidationRe
         if "opening_collision" in reasons:
             break
 
-    porch_cfg = template["attachments"]["porch"]["maxBoundsM"]
+    porch_cfg = template["attachments"].get("porch", {}).get("maxBoundsM", [0, 0, 0])
     allowed = tuple(float(v) for v in porch_cfg)
     for attachment in h.attachments:
         if attachment.name == "porch":

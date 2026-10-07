@@ -213,7 +213,7 @@ def build_house_detail_objects(bpy, geometry: dict, detail: dict) -> dict[str, o
     fascia = _build_fascia(bpy, house, detail)
     gutter = _build_gutter(bpy, house, detail)
     downpipe = _build_downpipe(bpy, house, detail)
-    porch = _build_porch(bpy, house, detail)
+    porch = _build_porch(bpy, house, detail) if detail["porch"] is not None else None
 
     return {
         "windows": windows,

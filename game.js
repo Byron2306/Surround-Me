@@ -1,3 +1,6 @@
+import { variantStructure, loadVariant, reviewLayout } from './world-art/house-variant-runtime.mjs';
+import { prepareHouseRuntime } from './world-art/house-runtime-alpha.mjs?v=2';
+import { structureAnchor, structureBounds, actorHeight, viewportSize, placementClear, wallFace } from './world-art/live-world-spatial.mjs';
 // SURROUND ME — The Verge (Area 1)
 // An isometric dark fantasy action RPG that asks whether the player can remain present
 // ============================================================
@@ -270,7 +273,13 @@ function loadImages() {
             const img = new Image();
             img.crossOrigin = 'anonymous';
             img.onload = () => {
-                loadedImages[key] = img;
+                try {
+                    loadedImages[key] = key === 'houseAG18Governed'
+                        ? prepareHouseRuntime(img, document) : img;
+                } catch (error) {
+                    loadedImages[key] = null;
+                    console.error('House runtime image preparation failed', error);
+                }
                 imagesLoaded++;
                 if (imagesLoaded >= totalImages) resolve();
             };
@@ -2588,21 +2597,13 @@ function clearForcedViewport() { window.__FORCE_VIEWPORT = null; resize(); }
 function toggleForcedViewport1920() { if (window.__FORCE_VIEWPORT) clearForcedViewport(); else applyForcedViewport(1920, 1080); updateUiDebugOverlay(); }
 
 function resize() {
-    // Keep internal drawing buffer fixed (1280x720 widescreen for Diablo‑2 feel)
-    canvas.width = FIXED_CANVAS_W;
-    canvas.height = FIXED_CANVAS_H;
-
-    // Use forced viewport if present (developer QA mode)
     const dims = getViewportDims();
-
-    // Compute scale to fill the viewport. Use the larger scale so the canvas covers both
-    // width and height and any overflow is cropped — this provides a widescreen (cropped) feel
-    // while preserving the fixed internal resolution (zoomed-in look).
-    const scaleByWidth = dims.w / FIXED_CANVAS_W;
-    const scaleByHeight = dims.h / FIXED_CANVAS_H;
-    const scale = Math.max(scaleByWidth, scaleByHeight); // fill and crop if necessary
-    const scaledW = Math.round(FIXED_CANVAS_W * scale);
-    const scaledH = Math.round(FIXED_CANVAS_H * scale);
+    const logical = viewportSize(dims.w, dims.h);
+    canvas.width = logical.w;
+    canvas.height = logical.h;
+    const scale = dims.w / canvas.width;
+    const scaledW = dims.w;
+    const scaledH = dims.h;
 
     // Apply scaled dimensions so the canvas fills the viewport horizontally when possible
     canvas.style.width = scaledW + 'px';
@@ -2611,7 +2612,7 @@ function resize() {
     canvas.style.left = '50%';
     canvas.style.top = '50%';
     canvas.style.transform = 'translate(-50%, -50%)';
-    // Ensure overflow is hidden so excess canvas is cropped (widescreen crop)
+    // Keep the game surface within the viewport.
     canvas.style.maxWidth = 'none';
     canvas.style.maxHeight = 'none';
     canvas.style.imageRendering = 'auto';
@@ -2648,7 +2649,7 @@ function resize() {
             tc.style.zIndex = 0;
         }
 
-        // Record visible canvas rectangle (in internal canvas pixels) for HUD alignment/debug
+        // Record the canvas rectangle for HUD alignment/debug
         const left = Math.round((dims.w - scaledW) / 2);
         const top = Math.round((dims.h - scaledH) / 2);
         const visibleCanvasH = Math.round(dims.h / scale);
@@ -2656,17 +2657,17 @@ function resize() {
         const visibleBottom = Math.round(visibleTop + visibleCanvasH);
         window._visibleCanvas = { left, top, scaledW, scaledH, scale, visibleTop, visibleBottom };
 
-        // Reposition DOM HUD elements so they stay inside the visible (cropped) canvas area
+        // Reposition DOM HUD elements inside the current canvas.
         try {
-            const toViewportY = (internalY) => Math.round(top + (internalY / FIXED_CANVAS_H) * scaledH);
-            const toViewportX = (internalX) => Math.round(left + (internalX / FIXED_CANVAS_W) * scaledW);
+            const toViewportY = (internalY) => Math.round(top + (internalY / canvas.height) * scaledH);
+            const toViewportX = (internalX) => Math.round(left + (internalX / canvas.width) * scaledW);
 
             // Skill bar -> center-bottom of visible canvas
             const skillBar = document.getElementById('skills-bar');
             if (skillBar) {
-                const skillBarInternalY = FIXED_CANVAS_H - 76; // same internal offset used by canvas HUD
+                const skillBarInternalY = canvas.height - 76; // same internal offset used by canvas HUD
                 const skillBarTopPx = toViewportY(skillBarInternalY);
-                const skillBarLeftPx = toViewportX(FIXED_CANVAS_W / 2);
+                const skillBarLeftPx = toViewportX(canvas.width / 2);
                 skillBar.style.position = 'fixed';
                 skillBar.style.left = skillBarLeftPx + 'px';
                 skillBar.style.top = skillBarTopPx + 'px';
@@ -2678,9 +2679,9 @@ function resize() {
             // Area name -> canvas center
             const areaName = document.getElementById('area-name');
             if (areaName) {
-                const centerY = toViewportY(FIXED_CANVAS_H / 2) - Math.round(parseFloat(getComputedStyle(areaName).fontSize || 28) / 2);
+                const centerY = toViewportY(canvas.height / 2) - Math.round(parseFloat(getComputedStyle(areaName).fontSize || 28) / 2);
                 areaName.style.top = centerY + 'px';
-                areaName.style.left = toViewportX(FIXED_CANVAS_W / 2) + 'px';
+                areaName.style.left = toViewportX(canvas.width / 2) + 'px';
                 areaName.style.transform = 'translate(-50%, -50%)';
             }
 
@@ -2753,18 +2754,20 @@ const DIR8_NAMES = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 // ============================================================
 // CAMERA
 // ============================================================
-const CAMERA_ZOOM = 2.0625; // Adjusted zoom so 1280×720 closely matches the vertical/D2 feel of 1024×768@2.2
+const CAMERA_ZOOM = 2.4; // Wider world view; actor sizes remain in canonical metres.
 const PLAYER_HEIGHT_M = 1.72;
 const VERTICAL_PX_PER_M = 8 * Math.sqrt(6);
 const PLAYER_SPRITE_H = PLAYER_HEIGHT_M * VERTICAL_PX_PER_M;
-const HOUSE_G1_8_TEST = typeof window !== 'undefined'
+const HOUSE_VARIANT_REVIEW = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('house-variant') === 'house.a.02';
+let houseVariantMetadata = null;
+const HOUSE_G1_8_TEST = HOUSE_VARIANT_REVIEW || typeof window !== 'undefined'
     && new URLSearchParams(window.location.search).get('house-test') === '1';
 // Global shake multiplier (can be tuned). Lower to reduce overall camera shake intensity.
 const CAMERA_SHAKE_MULTIPLIER = 1.0;
 const camera = {
     x: 0, y: 0,
     targetX: 0, targetY: 0,
-    zoom: CAMERA_ZOOM,
+    zoom: HOUSE_VARIANT_REVIEW ? 3.0 : CAMERA_ZOOM,
     shake: 0,
     shakeDecay: 0.92,
     update() {
@@ -2870,15 +2873,8 @@ function isBlockedAt(wx, wy) {
     if (world && world.structures) {
         for (const s of world.structures) {
             if (!s) continue;
-            if (s.collisionBounds) {
-                const b = s.collisionBounds;
-                if (
-                    wx > s.x + b.minX && wx < s.x + b.maxX
-                    && wy > s.y + b.minY && wy < s.y + b.maxY
-                ) return true;
-                continue;
-            }
-            if (wx > s.x - 0.5 && wx < s.x + s.w + 0.5 && wy > s.y - 0.5 && wy < s.y + s.h + 0.5) return true;
+            const b = structureBounds(s);
+            if (wx > b.minX && wx < b.maxX && wy > b.minY && wy < b.maxY) return true;
         }
     }
 
@@ -3964,8 +3960,8 @@ const world = {
         // s.x/s.y is the canonical House A ground anchor, not a top-left corner.
         if (HOUSE_G1_8_TEST) {
             this.structures.push({
-                x: hubX + 10,
-                y: hubY + 8,
+                x: HOUSE_VARIANT_REVIEW ? reviewLayout(hubX,hubY).master.x : hubX + 10,
+                y: HOUSE_VARIANT_REVIEW ? reviewLayout(hubX,hubY).master.y : hubY + 8,
                 w: 3.75,
                 h: 3.0,
                 type: 'governedHouseA',
@@ -3985,6 +3981,16 @@ const world = {
                     maxY: 0.0,
                 },
             });
+        }
+
+        if (HOUSE_VARIANT_REVIEW && houseVariantMetadata) {
+            const layout=reviewLayout(hubX,hubY);
+            this.structures.push(variantStructure(houseVariantMetadata,layout.variant.x,layout.variant.y));
+            const plots=this.structures.filter(s=>s.governedTest).map(structureBounds);
+            this.structures=this.structures.filter(s=>s.governedTest || !plots.some(p=>{
+                const b=structureBounds(s);
+                return b.minX<p.maxX+1 && b.maxX>p.minX-1 && b.minY<p.maxY+1.5 && b.maxY>p.minY-1;
+            }));
         }
 
         // Assign randomized house sprites for shack-type structures (house1..house3)
@@ -4033,6 +4039,14 @@ const world = {
             });
         }
         
+        for (let i=0; i<this.wallSegments.length; i++) {
+            const current=this.wallSegments[i];
+            const next=this.wallSegments[(i+1)%this.wallSegments.length];
+            if (Math.hypot(next.x-current.x,next.y-current.y)<2) {
+                current.end={x:next.x,y:next.y,height:next.height};
+            }
+        }
+
         // Gate markers — pillars flanking the exit
         const gL = gateAngle - gateHalfWidth;
         const gR = gateAngle + gateHalfWidth;
@@ -4331,6 +4345,31 @@ const world = {
             this.props.push({ x: px, y: py, type: 'lanternPost', scale: 0.5 + Math.random() * 0.1, flip: false, zOffset: -20 });
         }
         
+        const placedProps = [];
+        for (const prop of this.props) {
+            const radius = prop.collisionRadius ?? 0.6 * (prop.scale || 1);
+            if (HOUSE_VARIANT_REVIEW && !placementClear(prop.x,prop.y,this.structures.filter(s=>s.governedTest),3)) continue;
+            if (!placementClear(prop.x, prop.y, this.structures, radius)) continue;
+            if (placedProps.some(p => Math.hypot(p.x-prop.x, p.y-prop.y) < radius + (p.collisionRadius ?? 0.6*(p.scale || 1)))) continue;
+            placedProps.push(prop);
+        }
+        this.props = placedProps;
+        // Relocate authored NPCs locally instead of leaving them inside a new building.
+        for (const npc of this.npcs) {
+            if (!isBlockedAt(npc.x, npc.y) && placementClear(npc.x,npc.y,this.structures,0.3)) continue;
+            const origin = {x:npc.x,y:npc.y};
+            let placed = false;
+            for (let r=0.5; r<=8 && !placed; r+=0.5) {
+                for (let i=0; i<16; i++) {
+                    const x=origin.x+Math.cos(i*Math.PI/8)*r;
+                    const y=origin.y+Math.sin(i*Math.PI/8)*r;
+                    if (Math.hypot(x-hubX,y-hubY)>=HUB_SAFE_RADIUS-1) continue;
+                    if (isBlockedAt(x,y) || !placementClear(x,y,this.structures,0.3)) continue;
+                    npc.x=x; npc.y=y; placed=true; break;
+                }
+            }
+        }
+
         // ── PERSISTENT FOG — Atmospheric ground haze ──
         for (let i = 0; i < 50; i++) {
             const fx = 5 + Math.random() * 90;
@@ -8489,6 +8528,20 @@ function spawnEnemies() {
     
     // The Remembered — rare
     enemies.push(new Enemy('remembered', hubX + 20, hubY - 15));
+    enemies = enemies.filter(e => {
+        if (!isBlockedAt(e.x,e.y) && Math.hypot(e.x-hubX,e.y-hubY)>=minSpawnDist) return true;
+        const origin={x:e.x,y:e.y};
+        for (let r=0.5; r<=8; r+=0.5) {
+            for (let i=0; i<16; i++) {
+                const x=origin.x+Math.cos(i*Math.PI/8)*r;
+                const y=origin.y+Math.sin(i*Math.PI/8)*r;
+                if (x<1 || y<1 || x>WORLD_SIZE-1 || y>WORLD_SIZE-1) continue;
+                if (Math.hypot(x-hubX,y-hubY)<minSpawnDist || isBlockedAt(x,y)) continue;
+                e.x=x; e.y=y; return true;
+            }
+        }
+        return false;
+    });
 }
 
 // ============================================================
@@ -9086,7 +9139,8 @@ function render() {
     
     // Structures
     for (const s of world.structures) {
-        const pos = worldToScreen(s.x + s.w / 2, s.y + s.h / 2);
+        const anchor = structureAnchor(s);
+        const pos = worldToScreen(anchor.x, anchor.y);
         renderables.push({ type: 'structure', data: s, y: pos.y, pos });
     }
     
@@ -11664,7 +11718,7 @@ function drawStructure(ctx, sx, sy, s) {
             ctx.font = '10px monospace';
             ctx.textAlign = 'center';
             ctx.fillStyle = 'rgba(230,210,170,0.9)';
-            ctx.fillText('[G1.8 HOUSE TEST]', 0, 20);
+            ctx.fillText(s.label || '[G1.8 HOUSE TEST]', 0, 20);
         }
         ctx.restore();
         return;
@@ -11917,15 +11971,33 @@ function drawWall(ctx, sx, sy, w) {
     ctx.ellipse(sx, sy + 3, wallW * 0.6, 4, 0, 0, Math.PI * 2);
     ctx.fill();
     
-    // Wall body — dark stone with slight warmth
-    const shade = 0.85 + dmg * 0.1;
-    ctx.fillStyle = `rgb(${Math.floor(28 * shade)},${Math.floor(24 * shade)},${Math.floor(20 * shade)})`;
-    ctx.fillRect(sx - wallW / 2, sy - wallH, wallW, wallH);
-    
-    // Top — crenellation
-    ctx.fillStyle = `rgb(${Math.floor(32 * shade)},${Math.floor(28 * shade)},${Math.floor(22 * shade)})`;
-    ctx.fillRect(sx - wallW / 2 - 1, sy - wallH - 3, wallW + 2, 4);
-    
+    // Follow the projected neighbour: the old fixed-width rectangles read as black posts.
+    const face=wallFace(w,worldToScreen);
+    ctx.beginPath();
+    face.forEach((p,i)=>i===0?ctx.moveTo(sx+p.x,sy+p.y):ctx.lineTo(sx+p.x,sy+p.y));
+    ctx.closePath();
+    ctx.fillStyle = '#514b40';
+    ctx.fill();
+    ctx.strokeStyle = '#302d27';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    // Cap and mortar courses follow the same perspective, never screen-aligned pillars.
+    ctx.strokeStyle = '#827866';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(sx+face[3].x,sy+face[3].y);
+    ctx.lineTo(sx+face[2].x,sy+face[2].y);
+    ctx.stroke();
+    ctx.strokeStyle = '#37332c';
+    ctx.lineWidth = 0.7;
+    for(let course=1;course<5;course++) {
+        const t=course/5;
+        ctx.beginPath();
+        ctx.moveTo(sx,sy+face[3].y*t);
+        ctx.lineTo(sx+face[1].x,sy+face[1].y+(face[2].y-face[1].y)*t);
+        ctx.stroke();
+    }
+
     // Damage cracks
     if (dmg > 0.1) {
         ctx.strokeStyle = `rgba(15,12,10,${dmg * 0.6})`;
@@ -12029,7 +12101,7 @@ function drawNPC(ctx, sx, sy, npc) {
     
     if (img) {
         // Sprite-based NPC rendering with bottom 5% crop (green circle artifact removal)
-        const spriteH = 65;
+        const spriteH = actorHeight('npc', npc.heightM);
         const spriteW = spriteH * (img.width / img.height);
         const cropBottom = Math.floor(img.height * 0.05);
         const srcH = img.height - cropBottom;
@@ -12615,14 +12687,8 @@ function drawEnemy(ctx, sx, sy, e, cam) {
     const bobY = e.dead ? 0 : Math.sin(e.bobPhase) * 2;
     cam = cam || { x: 0, y: 0 };
     
-    let spriteH;
-    switch (e.type) {
-        case 'burdened': spriteH = 90; break;
-        case 'huddled': spriteH = 60; break;
-        case 'deferred': spriteH = 52; break;
-        default: spriteH = 70; break;
-    }
-    
+    const spriteH = actorHeight(e.type, e.heightM);
+
     const imgKey = e.type;
     const img = loadedImages[imgKey];
     let spriteW = img ? spriteH * (img.width / img.height) : 16;
@@ -14637,8 +14703,26 @@ async function init() {
 
     // Load assets in background while title plays
     await loadImages();
+    if (HOUSE_VARIANT_REVIEW) {
+        try {
+            const variant = await loadVariant();
+            houseVariantMetadata = variant.metadata;
+            loadedImages.houseA02 = variant.image;
+        } catch (error) {
+            console.error('[A-02 review refused]',error);
+            const notice = document.createElement('div');
+            notice.textContent = 'A-02 review refused: '+error.message;
+            notice.style.cssText = 'position:fixed;top:10px;left:10px;z-index:99999;background:#300;color:white;padding:12px';
+            document.body.appendChild(notice);
+            return;
+        }
+    }
     createTilePatterns();
     world.generate();
+    if (HOUSE_VARIANT_REVIEW) {
+        const spawn=reviewLayout(WORLD_SIZE/2,WORLD_SIZE/2).player;
+        player.x=spawn.x;player.y=spawn.y;
+    }
     
     // Audio context will be created on first user gesture
     

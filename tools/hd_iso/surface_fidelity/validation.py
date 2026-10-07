@@ -126,6 +126,8 @@ def validate_house_a_surface_fidelity(
     fidelity: dict,
 ) -> SurfaceFidelityValidationResult:
     reasons: list[str] = []
+    if fidelity.get("variantId") != geometry.get("variantId"):
+        reasons.append("variant_identity_mismatch")
 
     if fidelity.get("schemaVersion") != "hd-iso-surface-fidelity-v1":
         reasons.append("fidelity_schema_mismatch")

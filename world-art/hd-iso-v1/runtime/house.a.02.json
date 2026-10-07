@@ -1,0 +1,24 @@
+{
+  "anchorPixelX": 207.99993896484375,
+  "anchorPixelY": 328.0000457763672,
+  "asset": "house.a.02-a75ba98cf73fe244601c3e8b1f8271bb4e8eae3cdbfb90d8ccdbdb7216a6b0f1.png",
+  "collisionBounds": {
+    "maxX": 1.5,
+    "maxY": 0,
+    "minX": -1.5,
+    "minY": -3.0
+  },
+  "doorApproach": {
+    "x": -0.54,
+    "y": 0.5
+  },
+  "familyId": "house.master.a",
+  "logicalHeight": 512,
+  "logicalWidth": 512,
+  "physicalHeight": 2048,
+  "physicalWidth": 2048,
+  "pngSha256": "sha256:a75ba98cf73fe244601c3e8b1f8271bb4e8eae3cdbfb90d8ccdbdb7216a6b0f1",
+  "receipt": "house.a.02-a75ba98cf73fe244601c3e8b1f8271bb4e8eae3cdbfb90d8ccdbdb7216a6b0f1.receipt.json",
+  "schema": "house-variant-runtime-v1",
+  "variantId": "house.a.02"
+}

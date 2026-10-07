@@ -42,7 +42,7 @@ def compile_house_a_detail(geometry: dict, detail_seed: int) -> dict:
 
     eave = float(house["eaveOverhangM"])
     width = float(house["widthM"])
-    porch_max = _porch_allowance(house)
+    porch_max = _porch_allowance(house) if house.get("attachments") else [0, 0, 0]
 
     # A1 keeps variation deliberately tiny. Geometry-owned values never vary
     # with detail_seed. The seed may only choose among explicitly legal detail
@@ -62,6 +62,7 @@ def compile_house_a_detail(geometry: dict, detail_seed: int) -> dict:
     ]
 
     return {
+        **({"variantId": geometry["variantId"]} if "variantId" in geometry else {}),
         "schemaVersion": "hd-iso-detail-v1",
         "templateId": "house.master.a",
         "structuralSeed": int(geometry["structuralSeed"]),
@@ -86,7 +87,7 @@ def compile_house_a_detail(geometry: dict, detail_seed: int) -> dict:
             "side": side,
             "diameterM": 0.075,
         },
-        "porch": {
+        "porch": None if not house.get("attachments") else {
             "facade": "FRONT",
             "style": porch_style,
             "boundsM": porch_bounds,

@@ -264,7 +264,7 @@ def apply_house_surface_fidelity(
     trim_mats = {
         _material(core_objects["door"]),
         *(_material(obj) for obj in detail_objects["fascia"]),
-        _material(detail_objects["porch"]),
+        *([_material(detail_objects["porch"])] if detail_objects["porch"] is not None else []),
     }
 
     for mat in {walls_mat, roof_mat, *metal_mats, *glass_mats, *trim_mats}:

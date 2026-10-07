@@ -21,9 +21,18 @@ def build_geometry_proof(manifest: dict) -> dict:
             },
         }
 
+    if "variantId" in manifest:
+        from ..variants import compile_variant
+        from ..compile_geometry import manifest_dict
+        try:
+            expected = manifest_dict(compile_variant(manifest["variantId"])[0])
+        except ValueError:
+            expected = None
+        if manifest != expected:
+            return {"status": "REFUSE", "reasons": ["variant_contract_mismatch"], "checks": {}}
     h = manifest["house"]
 
-    footprint_ok = float(h["widthM"]) == 7.5 and float(h["depthM"]) == 6.0
+    footprint_ok = float(h["widthM"]) == (6.0 if "variantId" in manifest else 7.5) and float(h["depthM"]) == 6.0
     checks["footprint"] = _passfail(footprint_ok)
     if not footprint_ok:
         reasons.append("footprint_mismatch")

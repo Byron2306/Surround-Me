@@ -6,6 +6,7 @@ import os
 import subprocess
 from pathlib import Path
 
+from .variants import compile_variant
 from .compile_geometry import compile_template, manifest_dict
 from .compile_detail import compile_house_a_detail
 from .compile_surface import compile_house_a_surface
@@ -51,14 +52,14 @@ def _emit(payload: dict) -> int:
     return 0 if payload.get("status") == "PASS" else 2
 
 
-def _compile_and_validate(root: Path, template_id: str, seed: int, geometry_path: Path):
+def _compile_and_validate(root: Path, template_id: str, seed: int, geometry_path: Path, variant=None):
     try:
-        manifest = compile_template(template_id, seed, root)
+        manifest = compile_variant(variant, root)[0] if variant else compile_template(template_id, seed, root)
     except ValueError:
         return None, {"status": "REFUSE", "reasons": ["unknown_template"]}
 
     _write_manifest(geometry_path, manifest)
-    validation = validate_house_a(manifest, _template_data(root))
+    validation = validate_house_a(manifest, compile_variant(variant, root)[1] if variant else _template_data(root))
     if validation.status != "PASS":
         return manifest, {
             "status": "REFUSE",
@@ -146,7 +147,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="hd-iso")
     parser.add_argument("command", choices=("compile", "validate", "render", "prove", "build"))
     parser.add_argument("template_id")
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--seed", type=int)
+    parser.add_argument("--variant")
     parser.add_argument("--detail-seed", type=int)
     parser.add_argument("--appearance-seed", type=int)
     parser.add_argument("--decay-seed", type=int)
@@ -157,13 +159,26 @@ def main(argv: list[str] | None = None) -> int:
 
     root = _repo_root()
 
+    if args.variant:
+        try:
+            vm, effective_template, contract = compile_variant(args.variant, root)
+            if args.template_id != vm.template_id or args.seed not in (None, vm.structural_seed):
+                raise ValueError("conflicting family or structural seed")
+        except (ValueError, OSError) as exc:
+            return _emit({"status": "REFUSE", "reasons": [str(exc)]})
+        if any(v is not None and not 0 <= v <= 2**32-1 for v in (args.detail_seed,args.appearance_seed,args.decay_seed,args.fidelity_seed)):
+            return _emit({"status":"REFUSE","reasons":["invalid_variant_seed"]})
+        args.seed = vm.structural_seed
+    elif args.seed is None:
+        args.seed = 0
+
     if args.render_scale < MIN_RENDER_SCALE:
         return _emit({"status": "REFUSE", "reasons": ["render_scale_must_be_positive"]})
 
     if args.command in ("compile", "validate"):
         out = args.out or _default_geometry_out(root, args.template_id)
         try:
-            manifest = compile_template(args.template_id, args.seed, root)
+            manifest = vm if args.variant else compile_template(args.template_id, args.seed, root)
         except ValueError:
             return _emit({"status": "REFUSE", "reasons": ["unknown_template"]})
 
@@ -171,10 +186,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "compile":
             return _emit({"status": "PASS", "output": str(out)})
 
-        result = validate_house_a(manifest, _template_data(root))
+        result = validate_house_a(manifest, effective_template if args.variant else _template_data(root))
         return _emit({"status": result.status, "reasons": list(result.reasons), "output": str(out)})
 
-    build_root = args.out or _default_build_out(root, args.template_id)
+    build_root = args.out or _default_build_out(root, args.variant or args.template_id)
     geometry_path = build_root / "geometry.json"
     detail_path = build_root / "detail.json"
     surface_path = build_root / "surface.json"
@@ -182,9 +197,12 @@ def main(argv: list[str] | None = None) -> int:
     render_dir = build_root / "render"
     proof_dir = build_root / "proof"
 
-    manifest, refused = _compile_and_validate(root, args.template_id, args.seed, geometry_path)
+    manifest, refused = _compile_and_validate(root, args.template_id, args.seed, geometry_path, args.variant)
     if refused:
         return _emit(refused)
+
+    if args.variant:
+        _write_json(build_root / "variant-contract.json", contract)
 
     detail = None
     geometry_payload = manifest_dict(manifest)

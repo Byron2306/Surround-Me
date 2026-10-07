@@ -1,0 +1,29 @@
+{
+  "schema": "house-a-variants-v1",
+  "variants": {
+    "house.a.02": {
+      "familyId": "house.master.a",
+      "structuralSeed": 18428,
+      "footprintM": [
+        6.0,
+        6.0
+      ],
+      "maxHeightM": 4.8,
+      "storeys": 1,
+      "anchor": [
+        0.5,
+        1.0
+      ],
+      "wallHeightM": 2.6856203614167002,
+      "roofPitchDegrees": 33.59802181853683,
+      "eaveOverhangM": 0.3547842106675055,
+      "ridgeAxis": "X",
+      "doorPosition": 0.32,
+      "windowPosition": 0.72,
+      "windowWidthM": 0.9,
+      "windowHeightM": 1.24,
+      "windowSillM": 0.85,
+      "attachments": []
+    }
+  }
+}

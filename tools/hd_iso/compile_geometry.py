@@ -35,6 +35,7 @@ def _opening_dict(opening) -> dict:
 def manifest_dict(manifest: GeometryManifest) -> dict:
     h = manifest.house
     return {
+        **({"variantId": manifest.variant_id} if manifest.variant_id is not None else {}),
         "schemaVersion": manifest.schema_version,
         "templateId": manifest.template_id,
         "structuralSeed": manifest.structural_seed,
