@@ -77,6 +77,19 @@ function cardinalRoadSides(x, y, road) {
   return CARDINAL.filter(([, dx, dy]) => road.has(key(x + dx, y + dy))).map(([name]) => name);
 }
 
+function roadVariant(connections) {
+  const s = new Set(connections);
+  if (s.size === 4) return 'road-cross';
+  if (s.size === 3) return 'road-t-' + [...s].sort().join('');
+  if (s.size === 2) {
+    if (s.has('e') && s.has('w')) return 'road-ew';
+    if (s.has('n') && s.has('s')) return 'road-ns';
+    return 'road-corner-' + [...s].sort().join('');
+  }
+  if (s.size === 1) return 'road-end-' + connections[0];
+  return 'road-isolated';
+}
+
 function curbVariant(sides) {
   const s = new Set(sides);
   if (s.size === 1) return `curb-${sides[0]}`;
@@ -129,12 +142,17 @@ export function compileStreetLayout(spec) {
   const blocked = new Set([...road, ...curb]);
   const sidewalk = ringOutside(curb, blocked);
 
-  const roadCells = sortedCells(road).map(c => ({
-    ...c,
-    role: 'road',
-    assetRole: 'groundRoad',
-    streetIds: [...new Set(owner.get(key(c.x,c.y)) ?? [])].sort(),
-  }));
+  const roadCells = sortedCells(road).map(c => {
+    const connections = cardinalRoadSides(c.x, c.y, road);
+    return {
+      ...c,
+      role: 'road',
+      assetRole: 'groundAsphalt',
+      streetIds: [...new Set(owner.get(key(c.x,c.y)) ?? [])].sort(),
+      connections,
+      variant: roadVariant(connections),
+    };
+  });
 
   const curbCells = sortedCells(curb).map(c => {
     const roadSides = cardinalRoadSides(c.x, c.y, road);
