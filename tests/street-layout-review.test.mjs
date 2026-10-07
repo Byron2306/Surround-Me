@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { residentialCrossroadSpec, streetReviewCells, streetReviewLayout } from '../world-art/street-layout-review.mjs';
+import { residentialCrossroadSpec, streetReviewCells, streetReviewLayout, reviewHousePlacements } from '../world-art/street-layout-review.mjs';
 
 test('review spec is a stable two-street crossroad', () => {
   const spec=residentialCrossroadSpec(50,50);
@@ -44,4 +44,14 @@ test('review house sockets face the street using governed House A orientation', 
   assert.ok(layout.lots.length>=2);
   assert.ok(layout.lots.every(l=>l.side==='north'));
   assert.ok(layout.lots.every(l=>l.houseSocket.facing==='south'));
+});
+
+
+test('review deterministically alternates governed A-01 and A-02 across legal lots', () => {
+  const layout=streetReviewLayout(50,50);
+  const placements=reviewHousePlacements(layout);
+  assert.equal(placements.length,layout.lots.length);
+  assert.deepEqual(placements.map(p=>p.houseKind),placements.map((_,i)=>i%2===0?'A01':'A02'));
+  assert.ok(placements.every((p,i)=>p.x===layout.lots[i].houseSocket.x && p.y===layout.lots[i].houseSocket.y));
+  assert.ok(placements.every(p=>p.facing==='south'));
 });
