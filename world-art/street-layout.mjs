@@ -142,15 +142,28 @@ export function compileStreetLayout(spec) {
   const blocked = new Set([...road, ...curb]);
   const sidewalk = ringOutside(curb, blocked);
 
+  const streetById = new Map(streets.map(s => [s.id, s]));
   const roadCells = sortedCells(road).map(c => {
     const connections = cardinalRoadSides(c.x, c.y, road);
+    const streetIds = [...new Set(owner.get(key(c.x,c.y)) ?? [])].sort();
+    const owned = streetIds.map(id => streetById.get(id)).filter(Boolean);
+    const axes = new Set(owned.map(s => s.axis));
+    let marking = 'none';
+    if (axes.size > 1) {
+      marking = 'junction';
+    } else if (owned.length) {
+      const axis = owned[0].axis;
+      if (axis === 'x' && owned.some(s => c.y === s.from.y)) marking = 'centerline-ew';
+      if (axis === 'y' && owned.some(s => c.x === s.from.x)) marking = 'centerline-ns';
+    }
     return {
       ...c,
       role: 'road',
       assetRole: 'groundAsphalt',
-      streetIds: [...new Set(owner.get(key(c.x,c.y)) ?? [])].sort(),
+      streetIds,
       connections,
       variant: roadVariant(connections),
+      marking,
     };
   });
 
