@@ -1,4 +1,6 @@
 import { compileStreetLayout } from './street-layout.mjs';
+import { loadVariant } from './house-variant-runtime.mjs';
+import { prepareHouseRuntime } from './house-runtime-alpha.mjs';
 
 export function residentialCrossroadSpec(cx=50,cy=50) {
   if (!Number.isInteger(cx) || !Number.isInteger(cy)) throw new Error('review_center_must_be_integer');
@@ -24,6 +26,17 @@ export function streetReviewLayout(cx=50,cy=50) {
 
 export function streetReviewCells(cx=50,cy=50) {
   return streetReviewLayout(cx,cy).cells;
+}
+
+export function reviewHousePlacements(layout) {
+  return (layout.lots??[]).map((lot,index)=>({
+    lotId:lot.id,
+    houseKind:index%2===0?'A01':'A02',
+    x:lot.houseSocket.x,
+    y:lot.houseSocket.y,
+    facing:lot.houseSocket.facing,
+    driveway:{...lot.driveway},
+  }));
 }
 
 const TILE_W=64;
@@ -223,16 +236,81 @@ function loadImage(src) {
   });
 }
 
+async function loadGovernedReviewHouses() {
+  const masterRaw=await loadImage('./world-art/hd-iso-v1/runtime/house-master-a-g1-8-governed-2048.png');
+  const master=masterRaw ? prepareHouseRuntime(masterRaw,document) : null;
+  const variant=await loadVariant('./world-art/hd-iso-v1/runtime/');
+  return {
+    A01:{
+      image:master,
+      logicalWidth:512,
+      logicalHeight:512,
+      anchorPixelX:220,
+      anchorPixelY:334,
+      label:'A-01',
+    },
+    A02:{
+      image:variant.image,
+      logicalWidth:variant.metadata.logicalWidth,
+      logicalHeight:variant.metadata.logicalHeight,
+      anchorPixelX:variant.metadata.anchorPixelX,
+      anchorPixelY:variant.metadata.anchorPixelY,
+      label:'A-02',
+    },
+  };
+}
+
+function drawDriveway(ctx,lot,cx,cy,originX,originY,zoom) {
+  const a=project(lot.driveway.curbX,lot.driveway.curbY,cx,cy,originX,originY,zoom);
+  const b=project(lot.houseSocket.x,lot.houseSocket.y,cx,cy,originX,originY,zoom);
+  ctx.save();
+  ctx.strokeStyle='rgba(82,78,72,0.92)';
+  ctx.lineWidth=Math.max(8,10*zoom);
+  ctx.lineCap='butt';
+  ctx.beginPath();
+  ctx.moveTo(a.x,a.y);
+  ctx.lineTo(b.x,b.y);
+  ctx.stroke();
+  ctx.strokeStyle='rgba(126,120,110,0.32)';
+  ctx.lineWidth=Math.max(1,1.2*zoom);
+  ctx.beginPath();
+  ctx.moveTo(a.x,a.y);
+  ctx.lineTo(b.x,b.y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawGovernedHouse(ctx,placement,asset,cx,cy,originX,originY,zoom) {
+  if(!asset?.image)return;
+  const p=project(placement.x,placement.y,cx,cy,originX,originY,zoom);
+  const w=asset.logicalWidth*zoom;
+  const h=asset.logicalHeight*zoom;
+  ctx.save();
+  ctx.drawImage(
+    asset.image,
+    p.x-asset.anchorPixelX*zoom,
+    p.y-asset.anchorPixelY*zoom,
+    w,h
+  );
+  ctx.fillStyle='rgba(225,218,198,0.92)';
+  ctx.font=`${Math.max(9,10*zoom)}px monospace`;
+  ctx.textAlign='center';
+  ctx.fillText(asset.label,p.x,p.y+16*zoom);
+  ctx.restore();
+}
+
 export async function renderStreetReview(canvas,options={}) {
   if(!canvas?.getContext) throw new Error('review_canvas_required');
   const cx=options.cx??50;
   const cy=options.cy??50;
   const zoom=options.zoom??1.55;
   const layout=streetReviewLayout(cx,cy);
-  const [asphaltImg,concreteImg,dirtImg]=await Promise.all([
+  const [asphaltImg,concreteImg,dirtImg,houses]=await Promise.all([
+
     loadImage('../asphalt1.png'),
     loadImage('../concrete.png'),
     loadImage('../asphalt1.png'),
+    loadGovernedReviewHouses(),
   ]);
 
   const rect=canvas.getBoundingClientRect();
@@ -273,7 +351,16 @@ export async function renderStreetReview(canvas,options={}) {
     }
   }
 
-  for(const lot of layout.lots??[]) drawLotOverlay(ctx,lot,cx,cy,originX,originY,zoom);
+  for(const lot of layout.lots??[]) {
+    drawDriveway(ctx,lot,cx,cy,originX,originY,zoom);
+    drawLotOverlay(ctx,lot,cx,cy,originX,originY,zoom);
+  }
+
+  const placements=reviewHousePlacements(layout)
+    .sort((a,b)=>(a.x+a.y)-(b.x+b.y)||a.y-b.y||a.x-b.x);
+  for(const placement of placements){
+    drawGovernedHouse(ctx,placement,houses[placement.houseKind],cx,cy,originX,originY,zoom);
+  }
 
   ctx.fillStyle='rgba(235,225,205,0.92)';
   ctx.font='14px monospace';
