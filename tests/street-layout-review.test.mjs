@@ -90,3 +90,12 @@ test('driveway curb renders as lowered ramp while normal curb stays raised', () 
     {raised:true,gutter:true,ramp:false}
   );
 });
+
+
+test('polished driveway is grid-aligned from curb toward house socket', () => {
+  const layout=streetReviewLayout(50,50);
+  for(const lot of layout.lots){
+    assert.equal(lot.driveway.curbX,lot.houseSocket.x);
+    assert.notEqual(lot.driveway.curbY,lot.houseSocket.y);
+  }
+});
