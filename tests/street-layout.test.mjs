@@ -99,3 +99,40 @@ test('curb corners never receive storm drains', () => {
   assert.ok(corners.length>0);
   assert.ok(corners.every(c=>c.stormDrain===false));
 });
+
+
+test('residential frontage compiler emits deterministic lots and driveway cuts', () => {
+  const layout=compileStreetLayout({
+    streets:[{id:'ew',axis:'x',from:{x:0,y:10},to:{x:20,y:10},halfWidth:1}],
+    residential:{
+      streetId:'ew',
+      side:'south',
+      lotDepth:4,
+      lotWidth:5,
+      setback:2,
+    },
+  });
+  assert.ok(Array.isArray(layout.lots));
+  assert.ok(layout.lots.length>=3);
+  assert.ok(layout.lots.every(l=>l.streetId==='ew'));
+  assert.ok(layout.lots.every(l=>l.driveway && Number.isInteger(l.driveway.curbX) && Number.isInteger(l.driveway.curbY)));
+  assert.ok(layout.lots.every(l=>l.houseSocket && Number.isFinite(l.houseSocket.x) && Number.isFinite(l.houseSocket.y)));
+  const drivewayKeys=new Set(layout.lots.map(l=>`${l.driveway.curbX},${l.driveway.curbY}`));
+  assert.equal(drivewayKeys.size,layout.lots.length);
+});
+
+test('driveway cuts mutate only matching straight curb modules', () => {
+  const layout=compileStreetLayout({
+    streets:[{id:'ew',axis:'x',from:{x:0,y:10},to:{x:20,y:10},halfWidth:1}],
+    residential:{streetId:'ew',side:'south',lotDepth:4,lotWidth:5,setback:2},
+  });
+  const drivewayKeys=new Set(layout.lots.map(l=>`${l.driveway.curbX},${l.driveway.curbY}`));
+  const curb=cellsByRole(layout,'curb');
+  for(const cell of curb){
+    const k=`${cell.x},${cell.y}`;
+    if(drivewayKeys.has(k)){
+      assert.equal(cell.module,'curb-driveway');
+      assert.equal(cell.stormDrain,false);
+    }
+  }
+});
