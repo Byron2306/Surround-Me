@@ -81,6 +81,53 @@ export function curbRenderProfile(cell) {
   return {raised:true,gutter:Boolean(cell?.gutterEdge),ramp:false};
 }
 
+export function depthKey(item) {
+  if(!item) return -Infinity;
+  if(Number.isFinite(item.depth)) return item.depth;
+  if(Number.isFinite(item.x) && Number.isFinite(item.y)) return item.x + item.y;
+  return -Infinity;
+}
+
+export function houseProjectionConformance(points,tolerance=0.08) {
+  if(!points?.left || !points?.right || !points?.rear) return {status:'REFUSE',reason:'points_required'};
+  const slope=(a,b)=>{
+    const dx=b.x-a.x,dy=b.y-a.y;
+    if(Math.abs(dx)<1e-9) return Infinity;
+    return dy/dx;
+  };
+  const front=slope(points.left,points.right);
+  const side=slope(points.left,points.rear);
+  const expectedFront=0.5;
+  const expectedSide=-0.5;
+  const frontError=Math.abs(front-expectedFront);
+  const sideError=Math.abs(side-expectedSide);
+  return {
+    status:(frontError<=tolerance && sideError<=tolerance)?'PASS':'REFUSE',
+    frontSlope:front,
+    sideSlope:side,
+    expectedFront,
+    expectedSide,
+    tolerance,
+    frontError,
+    sideError,
+  };
+}
+
+export function buildElevatedRenderables(layout,placements) {
+  const items=[];
+  for(const cell of layout.cells??[]){
+    if(cell.role!=='curb') continue;
+    const profile=curbRenderProfile(cell);
+    if(profile.raised || profile.ramp || profile.gutter){
+      items.push({kind:'curb-face',cell,x:cell.x,y:cell.y,depth:cell.x+cell.y});
+    }
+  }
+  for(const placement of placements??[]){
+    items.push({kind:'house',placement,x:placement.x,y:placement.y,depth:placement.x+placement.y});
+  }
+  return items;
+}
+
 const TILE_W=64;
 const TILE_H=32;
 
@@ -434,14 +481,8 @@ export async function renderStreetReview(canvas,options={}) {
       roadMarking(ctx,p.x,p.y,zoom,cell);
     } else {
       drawTexturedDiamond(ctx,concreteImg,p.x,p.y,zoom,cell.role==='curb'?'#66645f':'#555553');
-      if(cell.role==='curb'){
-        const profile=curbRenderProfile(cell);
-        if(profile.gutter) gutterAndDrain(ctx,p.x,p.y,zoom,cell);
-        for(const side of cell.roadSides??[]){
-          if(profile.ramp) drivewayCurbRamp(ctx,p.x,p.y,zoom,side);
-          else if(profile.raised) curbEdge(ctx,p.x,p.y,zoom,side);
-        }
-      }
+      // Raised curb faces, gutters and ramps are rendered later in the
+      // elevated depth pass so buildings/props can occlude correctly.
     }
   }
 
@@ -451,10 +492,23 @@ export async function renderStreetReview(canvas,options={}) {
     if(presentation.debug) drawLotOverlay(ctx,lot,cx,cy,originX,originY,zoom);
   }
 
-  const sortedPlacements=[...placements]
-    .sort((a,b)=>(a.x+a.y)-(b.x+b.y)||a.y-b.y||a.x-b.x);
-  for(const placement of sortedPlacements){
-    drawGovernedHouse(ctx,placement,houses[placement.houseKind],cx,cy,originX,originY,zoom,presentation.debug);
+  const elevated=buildElevatedRenderables(layout,placements)
+    .sort((a,b)=>depthKey(a)-depthKey(b) || a.kind.localeCompare(b.kind));
+
+  for(const item of elevated){
+    if(item.kind==='curb-face'){
+      const cell=item.cell;
+      const p=project(cell.x,cell.y,cx,cy,originX,originY,zoom);
+      const profile=curbRenderProfile(cell);
+      if(profile.gutter) gutterAndDrain(ctx,p.x,p.y,zoom,cell);
+      for(const side of cell.roadSides??[]){
+        if(profile.ramp) drivewayCurbRamp(ctx,p.x,p.y,zoom,side);
+        else if(profile.raised) curbEdge(ctx,p.x,p.y,zoom,side);
+      }
+    } else if(item.kind==='house'){
+      const placement=item.placement;
+      drawGovernedHouse(ctx,placement,houses[placement.houseKind],cx,cy,originX,originY,zoom,presentation.debug);
+    }
   }
 
   if(presentation.debug){
