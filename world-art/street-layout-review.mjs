@@ -70,6 +70,17 @@ export function computeReviewFit(layout,placements,houses,width,height,cx=50,cy=
   return {zoom,originX,originY,bounds:{minX,maxX,minY,maxY}};
 }
 
+export function reviewPresentation(search='') {
+  const q=new URLSearchParams(search.startsWith('?')?search.slice(1):search);
+  const v=(q.get('debug')??'').toLowerCase();
+  return {debug:v==='1' || v==='true' || v==='yes'};
+}
+
+export function curbRenderProfile(cell) {
+  if(cell?.module==='curb-driveway') return {raised:false,gutter:false,ramp:true};
+  return {raised:true,gutter:Boolean(cell?.gutterEdge),ramp:false};
+}
+
 const TILE_W=64;
 const TILE_H=32;
 
@@ -89,6 +100,21 @@ function diamondPath(ctx,x,y,zoom) {
   ctx.lineTo(x,y+hh);
   ctx.lineTo(x-hw,y);
   ctx.closePath();
+}
+
+function groundTone(x,y) {
+  const n=((x*73856093)^(y*19349663))>>>0;
+  const v=(n%17)-8;
+  return `rgb(${48+v},${44+Math.floor(v*.6)},${38+Math.floor(v*.35)})`;
+}
+
+function drawGroundDiamond(ctx,x,y,zoom) {
+  diamondPath(ctx,x,y,zoom);
+  ctx.fillStyle=groundTone(x,y);
+  ctx.fill();
+  ctx.strokeStyle='rgba(20,18,16,0.08)';
+  ctx.lineWidth=Math.max(.5,.65*zoom);
+  ctx.stroke();
 }
 
 function drawTexturedDiamond(ctx,img,x,y,zoom,fallback) {
@@ -185,6 +211,34 @@ function gutterAndDrain(ctx,x,y,zoom,cell) {
     ctx.lineTo(mx+ux*along+px*depth,my+uy*along+py*depth);
     ctx.stroke();
   }
+}
+
+function drivewayCurbRamp(ctx,x,y,zoom,side) {
+  const hw=(TILE_W/2)*zoom;
+  const hh=(TILE_H/2)*zoom;
+  const edges={
+    n:[[x,y-hh],[x+hw,y]],
+    e:[[x+hw,y],[x,y+hh]],
+    s:[[x,y+hh],[x-hw,y]],
+    w:[[x-hw,y],[x,y-hh]],
+  };
+  const edge=edges[side];
+  if(!edge)return;
+  const [[x1,y1],[x2,y2]]=edge;
+  ctx.save();
+  ctx.strokeStyle='rgba(86,84,80,0.9)';
+  ctx.lineWidth=Math.max(2,2.4*zoom);
+  ctx.beginPath();
+  ctx.moveTo(x1,y1);
+  ctx.lineTo(x2,y2);
+  ctx.stroke();
+  ctx.strokeStyle='rgba(154,150,142,0.45)';
+  ctx.lineWidth=Math.max(.8,.9*zoom);
+  ctx.beginPath();
+  ctx.moveTo(x1,y1-1.2*zoom);
+  ctx.lineTo(x2,y2-1.2*zoom);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function curbEdge(ctx,x,y,zoom,side) {
@@ -296,24 +350,34 @@ async function loadGovernedReviewHouses() {
 function drawDriveway(ctx,lot,cx,cy,originX,originY,zoom) {
   const a=project(lot.driveway.curbX,lot.driveway.curbY,cx,cy,originX,originY,zoom);
   const b=project(lot.houseSocket.x,lot.houseSocket.y,cx,cy,originX,originY,zoom);
+  const dx=b.x-a.x,dy=b.y-a.y;
+  const len=Math.hypot(dx,dy)||1;
+  const px=-dy/len,py=dx/len;
+  const half=Math.max(7,8*zoom);
   ctx.save();
-  ctx.strokeStyle='rgba(82,78,72,0.92)';
-  ctx.lineWidth=Math.max(8,10*zoom);
-  ctx.lineCap='butt';
+  ctx.fillStyle='rgba(73,70,65,0.96)';
   ctx.beginPath();
-  ctx.moveTo(a.x,a.y);
-  ctx.lineTo(b.x,b.y);
+  ctx.moveTo(a.x+px*half,a.y+py*half);
+  ctx.lineTo(a.x-px*half,a.y-py*half);
+  ctx.lineTo(b.x-px*half,b.y-py*half);
+  ctx.lineTo(b.x+px*half,b.y+py*half);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle='rgba(126,120,110,0.28)';
+  ctx.lineWidth=Math.max(1,1.1*zoom);
   ctx.stroke();
-  ctx.strokeStyle='rgba(126,120,110,0.32)';
+  ctx.strokeStyle='rgba(35,34,32,0.28)';
   ctx.lineWidth=Math.max(1,1.2*zoom);
-  ctx.beginPath();
-  ctx.moveTo(a.x,a.y);
-  ctx.lineTo(b.x,b.y);
-  ctx.stroke();
+  for(const offset of [-half*.42,half*.42]){
+    ctx.beginPath();
+    ctx.moveTo(a.x+px*offset,a.y+py*offset);
+    ctx.lineTo(b.x+px*offset,b.y+py*offset);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
-function drawGovernedHouse(ctx,placement,asset,cx,cy,originX,originY,zoom) {
+function drawGovernedHouse(ctx,placement,asset,cx,cy,originX,originY,zoom,debug=false) {
   if(!asset?.image)return;
   const p=project(placement.x,placement.y,cx,cy,originX,originY,zoom);
   const w=asset.logicalWidth*zoom;
@@ -325,10 +389,12 @@ function drawGovernedHouse(ctx,placement,asset,cx,cy,originX,originY,zoom) {
     p.y-asset.anchorPixelY*zoom,
     w,h
   );
-  ctx.fillStyle='rgba(225,218,198,0.92)';
-  ctx.font=`${Math.max(9,10*zoom)}px monospace`;
-  ctx.textAlign='center';
-  ctx.fillText(asset.label,p.x,p.y+16*zoom);
+  if(debug){
+    ctx.fillStyle='rgba(225,218,198,0.92)';
+    ctx.font=`${Math.max(9,10*zoom)}px monospace`;
+    ctx.textAlign='center';
+    ctx.fillText(asset.label,p.x,p.y+16*zoom);
+  }
   ctx.restore();
 }
 
@@ -367,11 +433,11 @@ export async function renderStreetReview(canvas,options={}) {
   const originY=fit.originY;
   const cells=[...layout.cells].sort((a,b)=>(a.x+a.y)-(b.x+b.y)||a.y-b.y||a.x-b.x);
 
-  // underlay makes the review boundary explicit without changing topology
+  // Neutral deterministic terrain underlay. Roads/curbs/sidewalks own their art.
   for(let x=cx-12;x<=cx+12;x++){
     for(let y=cy-12;y<=cy+12;y++){
       const p=project(x,y,cx,cy,originX,originY,zoom);
-      drawTexturedDiamond(ctx,dirtImg,p.x,p.y,zoom,'#2a2a28');
+      drawGroundDiamond(ctx,p.x,p.y,zoom,x,y);
     }
   }
 
@@ -383,28 +449,35 @@ export async function renderStreetReview(canvas,options={}) {
     } else {
       drawTexturedDiamond(ctx,concreteImg,p.x,p.y,zoom,cell.role==='curb'?'#66645f':'#555553');
       if(cell.role==='curb'){
-        gutterAndDrain(ctx,p.x,p.y,zoom,cell);
-        for(const side of cell.roadSides??[]) curbEdge(ctx,p.x,p.y,zoom,side);
+        const profile=curbRenderProfile(cell);
+        if(profile.gutter) gutterAndDrain(ctx,p.x,p.y,zoom,cell);
+        for(const side of cell.roadSides??[]){
+          if(profile.ramp) drivewayCurbRamp(ctx,p.x,p.y,zoom,side);
+          else if(profile.raised) curbEdge(ctx,p.x,p.y,zoom,side);
+        }
       }
     }
   }
 
+  const presentation=options.presentation??reviewPresentation(typeof location!=='undefined'?location.search:'');
   for(const lot of layout.lots??[]) {
     drawDriveway(ctx,lot,cx,cy,originX,originY,zoom);
-    drawLotOverlay(ctx,lot,cx,cy,originX,originY,zoom);
+    if(presentation.debug) drawLotOverlay(ctx,lot,cx,cy,originX,originY,zoom);
   }
 
   const sortedPlacements=[...placements]
     .sort((a,b)=>(a.x+a.y)-(b.x+b.y)||a.y-b.y||a.x-b.x);
   for(const placement of sortedPlacements){
-    drawGovernedHouse(ctx,placement,houses[placement.houseKind],cx,cy,originX,originY,zoom);
+    drawGovernedHouse(ctx,placement,houses[placement.houseKind],cx,cy,originX,originY,zoom,presentation.debug);
   }
 
-  ctx.fillStyle='rgba(235,225,205,0.92)';
-  ctx.font='14px monospace';
-  ctx.textAlign='left';
-  ctx.fillText('DETERMINISTIC STREET REVIEW v1',18,26);
-  ctx.fillText(`road ${layout.counts.road}  curb ${layout.counts.curb}  sidewalk ${layout.counts.sidewalk}`,18,46);
+  if(presentation.debug){
+    ctx.fillStyle='rgba(235,225,205,0.92)';
+    ctx.font='14px monospace';
+    ctx.textAlign='left';
+    ctx.fillText('DETERMINISTIC STREET REVIEW v1',18,26);
+    ctx.fillText(`road ${layout.counts.road}  curb ${layout.counts.curb}  sidewalk ${layout.counts.sidewalk}`,18,46);
+  }
   return layout;
 }
 
