@@ -167,7 +167,7 @@ function compileResidentialFrontage(spec, streets, curbCells, road) {
     const end=start+lotWidth-1;
     const centerX=Math.floor((start+end)/2);
     const driveway={curbX:centerX,curbY};
-    const houseY=lotNearY + sign*(setback + Math.floor(lotDepth/2));
+    const houseY=curbY + sign*setback;
     const bounds={
       minX:start,maxX:end,
       minY:Math.min(lotNearY, lotNearY + sign*(lotDepth-1)),
