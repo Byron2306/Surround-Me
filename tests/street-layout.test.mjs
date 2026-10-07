@@ -57,3 +57,19 @@ test('road cells expose deterministic cardinal connectivity and topology variant
   assert.equal(byKey.get('0,2').variant,'road-ns');
   assert.deepEqual(byKey.get('0,2').connections,['n','s']);
 });
+
+
+test('marking authority comes from street ownership centerlines, not thick-road neighbors', () => {
+  const layout=compileStreetLayout({streets:[
+    {id:'ew',axis:'x',from:{x:-4,y:0},to:{x:4,y:0},halfWidth:1},
+    {id:'ns',axis:'y',from:{x:0,y:-4},to:{x:0,y:4},halfWidth:1},
+  ]});
+  const byKey=new Map(cellsByRole(layout,'road').map(c=>[`${c.x},${c.y}`,c]));
+  assert.equal(byKey.get('3,0').marking,'centerline-ew');
+  assert.equal(byKey.get('3,1').marking,'none');
+  assert.equal(byKey.get('0,3').marking,'centerline-ns');
+  assert.equal(byKey.get('1,3').marking,'none');
+  assert.equal(byKey.get('0,0').marking,'junction');
+  assert.equal(byKey.get('1,0').marking,'junction');
+  assert.equal(byKey.get('0,1').marking,'junction');
+});
