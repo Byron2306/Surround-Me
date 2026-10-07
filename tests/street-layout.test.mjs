@@ -136,3 +136,21 @@ test('driveway cuts mutate only matching straight curb modules', () => {
     }
   }
 });
+
+
+test('residential lots refuse frontage that crosses another street or junction', () => {
+  const layout=compileStreetLayout({
+    streets:[
+      {id:'ew',axis:'x',from:{x:0,y:10},to:{x:20,y:10},halfWidth:1},
+      {id:'ns',axis:'y',from:{x:10,y:4},to:{x:10,y:16},halfWidth:1},
+    ],
+    residential:{streetId:'ew',side:'south',lotDepth:4,lotWidth:5,setback:2},
+  });
+  assert.ok(layout.lots.length>=1);
+  for(const lot of layout.lots){
+    assert.ok(!(lot.bounds.minX<=11 && lot.bounds.maxX>=9),'lot crosses north-south carriageway');
+    const curb=layout.cells.find(c=>c.role==='curb' && c.x===lot.driveway.curbX && c.y===lot.driveway.curbY);
+    assert.ok(curb);
+    assert.equal(curb.module,'curb-driveway');
+  }
+});
