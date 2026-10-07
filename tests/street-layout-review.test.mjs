@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { residentialCrossroadSpec, streetReviewCells, streetReviewLayout, reviewHousePlacements } from '../world-art/street-layout-review.mjs';
+import { residentialCrossroadSpec, streetReviewCells, streetReviewLayout, reviewHousePlacements, computeReviewFit } from '../world-art/street-layout-review.mjs';
 
 test('review spec is a stable two-street crossroad', () => {
   const spec=residentialCrossroadSpec(50,50);
@@ -54,4 +54,21 @@ test('review deterministically alternates governed A-01 and A-02 across legal lo
   assert.deepEqual(placements.map(p=>p.houseKind),placements.map((_,i)=>i%2===0?'A01':'A02'));
   assert.ok(placements.every((p,i)=>p.x===layout.lots[i].houseSocket.x && p.y===layout.lots[i].houseSocket.y));
   assert.ok(placements.every(p=>p.facing==='south'));
+});
+
+
+test('review fit keeps road and governed house visible bounds inside viewport', () => {
+  const layout=streetReviewLayout(50,50);
+  const placements=reviewHousePlacements(layout);
+  const houses={
+    A01:{visibleBounds:{minX:-95.5,maxX:144,minY:-148.5,maxY:33.25}},
+    A02:{visibleBounds:{minX:-59.5,maxX:156,minY:-142.5,maxY:27.25}},
+  };
+  const fit=computeReviewFit(layout,placements,houses,1200,700,50,50,28);
+  assert.ok(fit.zoom>0);
+  assert.ok(fit.zoom<1.55);
+  assert.ok(fit.bounds.minX*fit.zoom+fit.originX>=27);
+  assert.ok(fit.bounds.maxX*fit.zoom+fit.originX<=1173);
+  assert.ok(fit.bounds.minY*fit.zoom+fit.originY>=27);
+  assert.ok(fit.bounds.maxY*fit.zoom+fit.originY<=673);
 });
