@@ -191,10 +191,6 @@ def _clear_border_connected_black_matte(image, threshold: int = 3):
     if width <= 0:
         return image
 
-    # Already-transparent donors keep their original alpha semantics.
-    if any(pixel[3] == 0 for row in image for pixel in row):
-        return image
-
     out = [list(row) for row in image]
     visited = [[False for _ in range(width)] for _ in range(height)]
     queue = []
@@ -204,7 +200,10 @@ def _clear_border_connected_black_matte(image, threshold: int = 3):
             return
         visited[y][x] = True
         r, g, b, a = out[y][x]
-        if a <= 0 or r > threshold or g > threshold or b > threshold:
+        # Traverse existing transparent margins and near-black opaque matte.
+        # This mirrors the browser compatibility cleanup and allows a transparent
+        # outer border to reach a black matte immediately inside it.
+        if a > 0 and (r > threshold or g > threshold or b > threshold):
             return
         queue.append((x, y))
 
@@ -219,8 +218,9 @@ def _clear_border_connected_black_matte(image, threshold: int = 3):
     while head < len(queue):
         x, y = queue[head]
         head += 1
-        r, g, b, _a = out[y][x]
-        out[y][x] = (r, g, b, 0)
+        r, g, b, a = out[y][x]
+        if a > 0:
+            out[y][x] = (r, g, b, 0)
         enqueue(x - 1, y)
         enqueue(x + 1, y)
         enqueue(x, y - 1)
