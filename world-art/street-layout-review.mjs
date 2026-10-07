@@ -66,15 +66,14 @@ function roadMarking(ctx,x,y,zoom,cell) {
     ctx.stroke();
   };
 
-  // Cross/T cells suppress centerlines inside the junction itself.
-  if(cell.variant==='road-cross' || cell.variant.startsWith('road-t-')) {
+  if(cell.marking==='junction' || cell.marking==='none') {
     ctx.restore();
     return;
   }
 
-  if(cell.variant==='road-ew') {
+  if(cell.marking==='centerline-ew') {
     draw(x-hw*0.74,y+hh*0.74,x+hw*0.74,y-hh*0.74);
-  } else if(cell.variant==='road-ns') {
+  } else if(cell.marking==='centerline-ns') {
     draw(x-hw*0.74,y-hh*0.74,x+hw*0.74,y+hh*0.74);
   }
 
