@@ -10,8 +10,8 @@ export function residentialCrossroadSpec(cx=50,cy=50) {
     ],
     residential:{
       streetId:'residential-ew',
-      side:'south',
-      lotDepth:4,
+      side:'north',
+      lotDepth:6,
       lotWidth:5,
       setback:2,
     },
