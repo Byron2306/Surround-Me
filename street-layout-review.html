@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Surround Me — Deterministic Street Review</title>
+<style>
+html,body{margin:0;width:100%;height:100%;background:#111;color:#ddd;font-family:monospace;overflow:hidden}
+main{width:100%;height:100%;display:grid;grid-template-rows:1fr auto}
+canvas{width:100%;height:100%;min-height:0;display:block}
+footer{padding:8px 12px;background:#0b0c0d;border-top:1px solid #333;font-size:12px}
+pre{white-space:pre-wrap;margin:0;color:#d89}
+</style>
+</head>
+<body>
+<main>
+<canvas data-street-review></canvas>
+<footer>Road = road1.png · curb/sidewalk = concrete.png · topology = street-layout.mjs<pre data-street-error></pre></footer>
+</main>
+<script type="module" src="./world-art/street-layout-review.mjs"></script>
+</body>
+</html>
