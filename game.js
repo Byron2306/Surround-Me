@@ -1,3 +1,5 @@
+import { createGroundAtlas } from './verge-ground.mjs';
+
 // SURROUND ME — The Verge (Area 1)
 // An isometric dark fantasy action RPG that asks whether the player can remain present
 // ============================================================
@@ -90,21 +92,15 @@ const ASSETS = {
     Aliza8: './Aliza8.png',        Aliza8gun: './Aliza8gun.png',        Aliza8knife: './Aliza8knife.png',
 
     // Enemy sprites
-    lingering: 'https://rosebud.ai/assets/enemy-lingering.webp?QL8s',
-    watchful: 'https://rosebud.ai/assets/enemy-watchful.webp?Hzeb',
-    huddled: 'https://rosebud.ai/assets/enemy-huddled.webp?lfyK',
-    rehearsed: 'https://rosebud.ai/assets/enemy-rehearsed.webp?ltUV',
-    burdened: 'https://rosebud.ai/assets/enemy-burdened.webp?CBXl',
-    drifting: 'https://rosebud.ai/assets/enemy-drifting.webp?Enqw',
-    deferred: 'https://rosebud.ai/assets/enemy-deferred.webp?Dab1',
-    remembered: 'https://rosebud.ai/assets/enemy-remembered.webp?bIeU',
-    // Ground textures
-    groundDirt: 'https://rosebud.ai/assets/ground-dirt-tile.webp?JQ74',
-    groundHub: 'https://rosebud.ai/assets/ground-hub-tile.webp?2ABi',
-    // Local road/asphalt/concrete tiles (used by procedural mapping)
-    groundAsphalt: './asphalt1.png',
-    groundConcrete: './concrete.png',
-    groundRoad: './road1.png',
+    lingering: './assets/enemies/lingering.webp',
+    watchful: './assets/enemies/watchful.webp',
+    huddled: './assets/enemies/huddled.webp',
+    rehearsed: './assets/enemies/rehearsed.webp',
+    burdened: './assets/enemies/burdened.webp',
+    drifting: './assets/enemies/drifting.webp',
+    deferred: './assets/enemies/deferred.webp',
+    remembered: './assets/enemies/remembered.webp',
+    hollow_warden: './assets/enemies/hollow_warden.svg',
     // Hub house variants (randomized per shack)
     house1: './house1.png',
     house2: './house2.png',
@@ -206,45 +202,7 @@ const ALIZA_CUSTOM_CROUCH= ['Aliza1crouch','Aliza2crouch','Aliza3crouch','Aliza4
 const DIR_TO_CUSTOM_INDEX = [4, 3, 2, 1, 0, 7, 6, 5]; // swapped L/R pairs: NE↔NW, E↔W, SE↔SW
 
 
-// Pre-created tile pattern canvases for textured ground rendering
-let groundDirtPattern = null;
-let groundHubPattern = null;
-let groundAsphaltPattern = null;
-let groundConcretePattern = null;
-let groundRoadPattern = null;
-let tilePatternCanvas = null;
-
-function createTilePatterns() {
-    // Create a clipped diamond pattern from the ground textures
-    const dirtImg = loadedImages.groundDirt;
-    const hubImg = loadedImages.groundHub;
-    const asphaltImg = loadedImages.groundAsphalt;
-    const concreteImg = loadedImages.groundConcrete;
-    const roadImg = loadedImages.groundRoad;
-    
-    function makeTileCanvas(img) {
-        const tc = document.createElement('canvas');
-        tc.width = TILE_W + 4;
-        tc.height = TILE_H + 4;
-        const tctx = tc.getContext('2d');
-        // Clip to diamond — slightly oversized to prevent zoom seams
-        tctx.beginPath();
-        tctx.moveTo(tc.width / 2, 0);
-        tctx.lineTo(tc.width, tc.height / 2);
-        tctx.lineTo(tc.width / 2, tc.height);
-        tctx.lineTo(0, tc.height / 2);
-        tctx.closePath();
-        tctx.clip();
-        tctx.drawImage(img, 0, 0, tc.width, tc.height);
-        return tc;
-    }
-
-    if (dirtImg) groundDirtPattern = makeTileCanvas(dirtImg);
-    if (hubImg) groundHubPattern = makeTileCanvas(hubImg);
-    if (asphaltImg) groundAsphaltPattern = makeTileCanvas(asphaltImg);
-    if (concreteImg) groundConcretePattern = makeTileCanvas(concreteImg);
-    if (roadImg) groundRoadPattern = makeTileCanvas(roadImg);
-}
+let groundAtlas;
 
 const loadedImages = {};
 let imagesLoaded = 0;
@@ -824,9 +782,6 @@ function initAudio() {
             ns.start(now); ns.stop(now + 0.04);
         }
         
-        // ── HELPER: play a "piano" note (sine + harmonics, medium attack) ──
-        function playPiano(dest, freq, vol, decay) {
-
         // ── HELPER: play a quick strum of a chord (staggered pluck) ──
         function playStrum(dest, chordFreqs, vol, decay, down = true) {
             // chordFreqs: array of numeric freqs (null allowed for rests)
@@ -845,6 +800,9 @@ function initAudio() {
                 }, i * stepMs);
             }
         }
+        // ── HELPER: play a "piano" note (sine + harmonics, medium attack) ──
+        function playPiano(dest, freq, vol, decay) {
+
             const now = ctx.currentTime;
             const o1 = ctx.createOscillator(); o1.type = 'sine'; o1.frequency.value = freq;
             const g1 = ctx.createGain();
@@ -2586,30 +2544,24 @@ function clearForcedViewport() { window.__FORCE_VIEWPORT = null; resize(); }
 function toggleForcedViewport1920() { if (window.__FORCE_VIEWPORT) clearForcedViewport(); else applyForcedViewport(1920, 1080); updateUiDebugOverlay(); }
 
 function resize() {
-    // Keep internal drawing buffer fixed (1280x720 widescreen for Diablo‑2 feel)
-    canvas.width = FIXED_CANVAS_W;
-    canvas.height = FIXED_CANVAS_H;
-
-    // Use forced viewport if present (developer QA mode)
     const dims = getViewportDims();
+    const aspect = dims.w / Math.max(1, dims.h);
+    // Match the visible aspect while preserving room for both HUD columns.
+    const logicalW = Math.max(640, FIXED_CANVAS_H * aspect);
+    const logicalH = logicalW / Math.max(0.1, aspect);
+    const limit = Math.min(1, Math.sqrt(2800000 / (logicalW * logicalH)));
+    canvas.width = Math.round(logicalW * limit);
+    canvas.height = Math.round(logicalH * limit);
+    const scale = dims.w / canvas.width;
+    const scaledW = dims.w;
+    const scaledH = dims.h;
 
-    // Compute scale to fill the viewport. Use the larger scale so the canvas covers both
-    // width and height and any overflow is cropped — this provides a widescreen (cropped) feel
-    // while preserving the fixed internal resolution (zoomed-in look).
-    const scaleByWidth = dims.w / FIXED_CANVAS_W;
-    const scaleByHeight = dims.h / FIXED_CANVAS_H;
-    const scale = Math.max(scaleByWidth, scaleByHeight); // fill and crop if necessary
-    const scaledW = Math.round(FIXED_CANVAS_W * scale);
-    const scaledH = Math.round(FIXED_CANVAS_H * scale);
-
-    // Apply scaled dimensions so the canvas fills the viewport horizontally when possible
     canvas.style.width = scaledW + 'px';
     canvas.style.height = scaledH + 'px';
     canvas.style.position = 'fixed';
     canvas.style.left = '50%';
     canvas.style.top = '50%';
     canvas.style.transform = 'translate(-50%, -50%)';
-    // Ensure overflow is hidden so excess canvas is cropped (widescreen crop)
     canvas.style.maxWidth = 'none';
     canvas.style.maxHeight = 'none';
     canvas.style.imageRendering = 'auto';
@@ -2649,22 +2601,22 @@ function resize() {
         // Record visible canvas rectangle (in internal canvas pixels) for HUD alignment/debug
         const left = Math.round((dims.w - scaledW) / 2);
         const top = Math.round((dims.h - scaledH) / 2);
-        const visibleCanvasH = Math.round(dims.h / scale);
+        const visibleCanvasH = canvas.height;
         const visibleTop = Math.round((canvas.height - visibleCanvasH) / 2);
         const visibleBottom = Math.round(visibleTop + visibleCanvasH);
         window._visibleCanvas = { left, top, scaledW, scaledH, scale, visibleTop, visibleBottom };
 
-        // Reposition DOM HUD elements so they stay inside the visible (cropped) canvas area
+        // Reposition DOM HUD elements so they stay inside the canvas area
         try {
-            const toViewportY = (internalY) => Math.round(top + (internalY / FIXED_CANVAS_H) * scaledH);
-            const toViewportX = (internalX) => Math.round(left + (internalX / FIXED_CANVAS_W) * scaledW);
+            const toViewportY = (internalY) => Math.round(top + (internalY / canvas.height) * scaledH);
+            const toViewportX = (internalX) => Math.round(left + (internalX / canvas.width) * scaledW);
 
             // Skill bar -> center-bottom of visible canvas
             const skillBar = document.getElementById('skills-bar');
             if (skillBar) {
-                const skillBarInternalY = FIXED_CANVAS_H - 76; // same internal offset used by canvas HUD
+                const skillBarInternalY = canvas.height - 76; // same internal offset used by canvas HUD
                 const skillBarTopPx = toViewportY(skillBarInternalY);
-                const skillBarLeftPx = toViewportX(FIXED_CANVAS_W / 2);
+                const skillBarLeftPx = toViewportX(canvas.width / 2);
                 skillBar.style.position = 'fixed';
                 skillBar.style.left = skillBarLeftPx + 'px';
                 skillBar.style.top = skillBarTopPx + 'px';
@@ -2676,9 +2628,9 @@ function resize() {
             // Area name -> canvas center
             const areaName = document.getElementById('area-name');
             if (areaName) {
-                const centerY = toViewportY(FIXED_CANVAS_H / 2) - Math.round(parseFloat(getComputedStyle(areaName).fontSize || 28) / 2);
+                const centerY = toViewportY(canvas.height / 2) - Math.round(parseFloat(getComputedStyle(areaName).fontSize || 28) / 2);
                 areaName.style.top = centerY + 'px';
-                areaName.style.left = toViewportX(FIXED_CANVAS_W / 2) + 'px';
+                areaName.style.left = toViewportX(canvas.width / 2) + 'px';
                 areaName.style.transform = 'translate(-50%, -50%)';
             }
 
@@ -2839,7 +2791,7 @@ function isOccludedBetween(x1, y1, x2, y2) {
             if (!p) continue;
             // only treat large prop types as occluders by default
             if (!(p.type === 'deadTree1' || p.type === 'deadTree2' || p.type === 'oldWell' || p.type === 'woodenCart' || p.type === 'hayPile' || p.type === 'lanternPost')) continue;
-            const pr = (p.scale || 1.0) * TILE_W * 0.30;
+            const pr = p.collisionRadius ?? 0.6 * (p.scale || 1.0);
             const d2 = _segmentPointDistSq(x1, y1, x2, y2, p.x, p.y);
             if (d2 < pr*pr) return true;
         }
@@ -2848,7 +2800,7 @@ function isOccludedBetween(x1, y1, x2, y2) {
     if (world && world.trees) {
         for (const t of world.trees) {
             if (!t) continue;
-            const tr = (t.height || 1.0) * TILE_W * 0.25;
+            const tr = t.collisionRadius ?? 0.6 * (t.height || 1.0);
             const d2 = _segmentPointDistSq(x1, y1, x2, y2, t.x, t.y);
             if (d2 < tr*tr) return true;
         }
@@ -3711,145 +3663,41 @@ const world = {
             }
         }
 
-        // ---- Suburb block planner (tile-aligned) ----
-        // Stamp repeating 8x8 suburban blocks across the map (skip the hub).
-        const BLOCK_W = 8, BLOCK_H = 8;
-        const houseDensity = 0.55; // chance to place a house at each candidate lot
-        for (let bx = 0; bx < WORLD_SIZE; bx += BLOCK_W) {
-            for (let by = 0; by < WORLD_SIZE; by += BLOCK_H) {
-                // Skip blocks overlapping the hub
-                const blockCenterX = bx + BLOCK_W / 2;
-                const blockCenterY = by + BLOCK_H / 2;
-                if (Math.hypot(blockCenterX - hubX, blockCenterY - hubY) < HUB_SAFE_RADIUS + 6) continue;
+        // Reserve two continuous streets and their sidewalks in each ten-tile block.
+        const block = 10;
+        const inSuburb = (x, y) => {
+            const distance = Math.hypot(x - hubX, y - hubY);
+            return distance >= HUB_SAFE_RADIUS + 3 && distance <= 40;
+        };
+        for (let x = 0; x < WORLD_SIZE; x++) {
+            for (let y = 0; y < WORLD_SIZE; y++) {
+                if (!inSuburb(x, y)) continue;
+                const column = x % block, row = y % block;
+                const alongY = column === 4, alongX = row === 5;
+                const tile = this.tiles[x][y];
+                if (alongX || alongY) {
+                    tile.type = 'road';
+                    tile.streetAxis = alongX && alongY ? 'junction' : alongX ? 'x' : 'y';
+                } else if (column === 3 || column === 5 || row === 4 || row === 6) {
+                    tile.type = 'sidewalk';
+                } else if (tile.type === 'road' || tile.type === 'asphalt' || tile.type === 'concrete') {
+                    tile.type = tile.variation < 0.65 ? 'deadgrass' : 'dirt';
+                }
+            }
+        }
 
-                // Local pattern (matches the Python sketch): vertical road at x=3, horizontal at y=4
-                // Apply within world bounds
-                for (let ly = 0; ly < BLOCK_H; ly++) {
-                    const wx = bx + 3; const wy = by + ly;
-                    if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE) {
-                        if (this.tiles[wx] && this.tiles[wx][wy]) this.tiles[wx][wy].type = 'road';
-                    }
-                }
-                for (let lx = 0; lx < BLOCK_W; lx++) {
-                    const wx = bx + lx; const wy = by + 4;
-                    if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE) {
-                        if (this.tiles[wx] && this.tiles[wx][wy]) this.tiles[wx][wy].type = 'asphalt';
-                    }
-                }
-
-                // Sidewalks (concrete) beside main roads
-                for (let ly = 0; ly < BLOCK_H; ly++) {
-                    for (const sx of [2, 4]) {
-                        const wx = bx + sx; const wy = by + ly;
-                        if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE && this.tiles[wx] && this.tiles[wx][wy]) {
-                            const tt = this.tiles[wx][wy].type;
-                            if (tt === 'dirt' || tt === 'deadgrass' || tt === 'path') this.tiles[wx][wy].type = 'concrete';
-                        }
-                    }
-                }
-                for (let lx = 0; lx < BLOCK_W; lx++) {
-                    for (const sy of [3, 5]) {
-                        const wx = bx + lx; const wy = by + sy;
-                        if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE && this.tiles[wx] && this.tiles[wx][wy]) {
-                            const tt = this.tiles[wx][wy].type;
-                            if (tt === 'dirt' || tt === 'deadgrass' || tt === 'path') this.tiles[wx][wy].type = 'concrete';
-                        }
-                    }
-                }
-
-                // Concrete pads at the intersection corners
-                const cornerPairs = [[3,2],[3,4],[5,2],[5,4]];
-                for (const [cy, cx] of cornerPairs) {
-                    const wx = bx + cx; const wy = by + cy;
-                    if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE && this.tiles[wx] && this.tiles[wx][wy]) {
-                        this.tiles[wx][wy].type = 'concrete';
-                    }
-                }
-
-                // Dirt lots in the four corner districts of the block
-                for (let y = 0; y <= 2; y++) for (let x = 0; x <= 1; x++) {
-                    const wx = bx + x, wy = by + y;
-                    if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE && this.tiles[wx] && this.tiles[wx][wy]) {
-                        this.tiles[wx][wy].type = (Math.random() < 0.5) ? 'dirt' : 'deadgrass';
-                    }
-                }
-                for (let y = 0; y <= 2; y++) for (let x = 5; x <= 7; x++) {
-                    const wx = bx + x, wy = by + y;
-                    if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE && this.tiles[wx] && this.tiles[wx][wy]) {
-                        this.tiles[wx][wy].type = (Math.random() < 0.5) ? 'dirt' : 'deadgrass';
-                    }
-                }
-                for (let y = 6; y <= 7; y++) for (let x = 0; x <= 1; x++) {
-                    const wx = bx + x, wy = by + y;
-                    if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE && this.tiles[wx] && this.tiles[wx][wy]) {
-                        this.tiles[wx][wy].type = (Math.random() < 0.5) ? 'dirt' : 'deadgrass';
-                    }
-                }
-                for (let y = 6; y <= 7; y++) for (let x = 5; x <= 7; x++) {
-                    const wx = bx + x, wy = by + y;
-                    if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE && this.tiles[wx] && this.tiles[wx][wy]) {
-                        this.tiles[wx][wy].type = (Math.random() < 0.5) ? 'dirt' : 'deadgrass';
-                    }
-                }
-
-                // Fill remaining empty-ish cells with concrete/dirt to tidy the block
-                for (let lx = 0; lx < BLOCK_W; lx++) {
-                    for (let ly = 0; ly < BLOCK_H; ly++) {
-                        const wx = bx + lx; const wy = by + ly;
-                        if (!(wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE)) continue;
-                        const tt = this.tiles[wx][wy].type;
-                        if (tt === 'deadgrass' || tt === 'path' || tt === 'dirt') {
-                            this.tiles[wx][wy].type = (Math.random() < 0.45) ? 'concrete' : 'dirt';
-                        }
-                    }
-                }
-
-                // Helper: check free placement (avoid overlaps)
-                const spotFree = (wx, wy) => {
-                    if (wx < 0 || wx >= WORLD_SIZE || wy < 0 || wy >= WORLD_SIZE) return false;
-                    if (!this.tiles[wx] || !this.tiles[wx][wy]) return false;
-                    if (this.tiles[wx][wy].type === 'haze' || this.tiles[wx][wy].type === 'hub_stone') return false;
-                    for (const s of this.structures) {
-                        if (Math.hypot(s.x - (wx + 0.5), s.y - (wy + 0.5)) < 1.6) return false;
-                    }
-                    return true;
-                };
-
-                // Place houses clearly along street edges (outer-of-sidewalk positions)
-                // Vertical road (local x=3) -> candidate house tiles at local x=1 and x=6
-                for (let ly = 0; ly < BLOCK_H; ly++) {
-                    const roadX = bx + 3, roadY = by + ly;
-                    if (!(roadX >= 0 && roadX < WORLD_SIZE && roadY >= 0 && roadY < WORLD_SIZE)) continue;
-                    const roadT = this.tiles[roadX][roadY].type;
-                    if (roadT === 'road' || roadT === 'asphalt') {
-                        const leftX = bx + 1; const rightX = bx + 6; const hy = by + ly;
-                        if (Math.random() < houseDensity && spotFree(leftX, hy)) {
-                            const asset = `house${1 + Math.floor(Math.random() * 3)}`;
-                            this.structures.push({ x: leftX + 0.5 - 0.12, y: hy + 0.5, w: 2, h: 2, type: 'shack', label: 'House', asset });
-                        }
-                        if (Math.random() < houseDensity && spotFree(rightX, hy)) {
-                            const asset = `house${1 + Math.floor(Math.random() * 3)}`;
-                            this.structures.push({ x: rightX + 0.5 + 0.12, y: hy + 0.5, w: 2, h: 2, type: 'shack', label: 'House', asset });
-                        }
-                    }
-                }
-
-                // Horizontal road (local y=4) -> candidate house tiles at local y=2 and y=6
-                for (let lx = 0; lx < BLOCK_W; lx++) {
-                    const roadX = bx + lx, roadY = by + 4;
-                    if (!(roadX >= 0 && roadX < WORLD_SIZE && roadY >= 0 && roadY < WORLD_SIZE)) continue;
-                    const roadT = this.tiles[roadX][roadY].type;
-                    if (roadT === 'road' || roadT === 'asphalt') {
-                        const topY = by + 2; const botY = by + 6; const hx = bx + lx;
-                        if (Math.random() < houseDensity && spotFree(hx, topY)) {
-                            const asset = `house${1 + Math.floor(Math.random() * 3)}`;
-                            this.structures.push({ x: hx + 0.5, y: topY + 0.5 - 0.12, w: 2, h: 2, type: 'shack', label: 'House', asset });
-                        }
-                        if (Math.random() < houseDensity && spotFree(hx, botY)) {
-                            const asset = `house${1 + Math.floor(Math.random() * 3)}`;
-                            this.structures.push({ x: hx + 0.5, y: botY + 0.5 + 0.12, w: 2, h: 2, type: 'shack', label: 'House', asset });
-                        }
-                    }
+        // Lots are measured from their centers, with a full sidewalk between the
+        // collision rectangle and road. Even opposite corners leave a clear gap.
+        for (let bx = 0; bx < WORLD_SIZE; bx += block) {
+            for (let by = 0; by < WORLD_SIZE; by += block) {
+                for (const [lx, ly] of [[1, 2], [7.5, 2], [1, 8], [7.5, 8]]) {
+                    const x = bx + lx, y = by + ly;
+                    if (!inSuburb(x - 1.5, y - 1.5) || !inSuburb(x + 1.5, y + 1.5) ||
+                        !inSuburb(x + 1.5, y - 1.5) || !inSuburb(x - 1.5, y + 1.5) ||
+                        Math.random() > 0.78) continue;
+                    const asset = `house${1 + Math.floor(Math.random() * 3)}`;
+                    this.structures.push({ x: x - 0.8, y: y - 0.8, w: 1.6, h: 1.6,
+                        type: 'shack', label: 'House', asset, suburban: true });
                 }
             }
         }
@@ -3873,7 +3721,7 @@ const world = {
 
         // Assign randomized house sprites for shack-type structures (house1..house3)
         for (const s of this.structures) {
-            if (s.type === 'shack') {
+            if (s.type === 'shack' && !s.asset) {
                 const n = 1 + Math.floor(Math.random() * 3);
                 s.asset = `house${n}`;
                 // Nudge shacks slightly outward from hub center so NPCs are not hidden behind them
@@ -4215,6 +4063,22 @@ const world = {
             this.props.push({ x: px, y: py, type: 'lanternPost', scale: 0.5 + Math.random() * 0.1, flip: false, zOffset: -20 });
         }
         
+        const clearScenery = (item, radius) => {
+            const left = Math.round(item.x - radius), right = Math.round(item.x + radius);
+            const top = Math.round(item.y - radius), bottom = Math.round(item.y + radius);
+            for (let x = left; x <= right; x++) {
+                for (let y = top; y <= bottom; y++) {
+                    const tile = this.tiles[x]?.[y];
+                    if (tile?.streetAxis || tile?.type === 'sidewalk') return false;
+                }
+            }
+            return !this.structures.some(s => item.x + radius > s.x - 0.5 &&
+                item.x - radius < s.x + s.w + 0.5 && item.y + radius > s.y - 0.5 &&
+                item.y - radius < s.y + s.h + 0.5);
+        };
+        this.props = this.props.filter(p => clearScenery(p, p.collisionRadius ?? 0.6 * (p.scale || 1)));
+        this.trees = this.trees.filter(t => clearScenery(t, t.collisionRadius ?? 0.6 * (t.height || 1)));
+
         // ── PERSISTENT FOG — Atmospheric ground haze ──
         for (let i = 0; i < 50; i++) {
             const fx = 5 + Math.random() * 90;
@@ -5721,6 +5585,9 @@ class Enemy {
         this.facingDir = 2;     // 8-direction: 0=N,1=NE,2=E,3=SE,4=S,5=SW,6=W,7=NW
         this.moveAngle = 0;     // raw movement angle
         this.bobPhase = Math.random() * Math.PI * 2;
+        this.stridePhase = this.bobPhase;
+        this.motion = 0;
+        this.lastAttackAt = -Infinity;
         this.knockbackX = 0;
         this.knockbackY = 0;
         this.patternPhase = 0;
@@ -5855,6 +5722,7 @@ getAttackCDMod() {
     return (1.0 + delay * 0.35) * (1.0 - Math.min(0.30, swarm * 0.12));
 }
 setAttackCooldown(baseSeconds) {
+    this.lastAttackAt = TIME.elapsed;
     this.attackCooldown = Math.max(0.05, baseSeconds * this.getAttackCDMod());
 }
 shouldFeint() {
@@ -5894,7 +5762,9 @@ update(dt) {
             return;
         }
         
+        const previousX = this.x, previousY = this.y;
         this.bobPhase += dt * 2;
+        this.motion *= Math.exp(-dt * 12);
         this.stateTimer += dt;
         this.attackCooldown = Math.max(0, this.attackCooldown - dt);
         this.stunTimer = Math.max(0, this.stunTimer - dt);
@@ -5919,9 +5789,11 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
         const distSq = dx * dx + dy * dy;
         const dist = Math.sqrt(distSq); // use squared distance for comparisons, but still need actual distance later
 
+        let speedMod = this.snaredSlowTimer > 0 ? 0.3 : 1.0;
+
         // Under heavy restraint, force enemies to chase the player relentlessly
         try {
-            if (greyline.getSide() === 'restraint' && greyline.getExtremity() > 0.7) {
+            if (!this.isBoss && this.type !== 'deferred' && greyline.getSide() === 'restraint' && greyline.getExtremity() > 0.7) {
                 this.state = 'approaching';
                 // also bump speed so they actually close
                 speedMod *= 1.5;
@@ -5967,7 +5839,7 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
         } catch(e) {}
 
         // Emergency proximity override: if enemy is effectively on top of player, ensure it can damage.
-        if (dist < 0.9 && this.attackCooldown <= 0 && !this.dead) {
+        if (dist < 0.9 && this.attackCooldown <= 0 && !this.isBoss && this.type !== 'deferred') {
             try {
                 player.takeDamage(this.damage);
             } catch (e) {}
@@ -5984,7 +5856,7 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
         } else {
             this._losBlockedTimer = Math.max(0, this._losBlockedTimer - dt * 1.5);
         }
-        if (this._losBlockedTimer > 2.0) {
+        if (this._losBlockedTimer > 2.0 && !this.isBoss && this.type !== 'deferred') {
             // begin subtle disengage
             if (this.state !== 'retreating' && this.state !== 'disengaging') {
                 this.state = 'hesitating';
@@ -6017,8 +5889,6 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
         }
         
         // Type-specific AI
-        const speedMod = this.snaredSlowTimer > 0 ? 0.3 : 1.0;
-        
         switch (this.type) {
             case 'lingering':
                 this.aiLingering(dt, dx, dy, dist, speedMod);
@@ -6044,13 +5914,48 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
             case 'remembered':
                 this.aiRemembered(dt, dx, dy, dist, speedMod);
                 break;
+            case 'hollow_warden':
+                this.aiWarden(dt, dx, dy, dist, speedMod);
+                break;
         }
         
         // Clamp
         this.x = Math.max(2, Math.min(WORLD_SIZE - 2, this.x));
         this.y = Math.max(2, Math.min(WORLD_SIZE - 2, this.y));
+        const distanceMoved = Math.hypot(this.x - previousX, this.y - previousY);
+        this.motion = Math.max(this.motion, Math.min(1, distanceMoved / Math.max(dt, 0.001)));
+        this.stridePhase = (this.stridePhase + distanceMoved * 7) % (Math.PI * 2);
     }
-    
+
+    aiWarden(dt, dx, dy, dist, speedMod) {
+        if (this.state === 'windup') {
+            if (this.stateTimer < 0.75) return;
+            this.state = 'slam';
+            this.stateTimer = 0;
+            if (dist <= this.attackRange && !isOccludedBetween(this.x, this.y, player.x, player.y)) {
+                player.takeDamage(this.damage);
+            }
+            camera.addShake(5);
+            this.setAttackCooldown(this.attackRate);
+            return;
+        }
+        if (this.state === 'slam' && this.stateTimer < 0.45) return;
+        if (dist > this.aggroRange) {
+            this.state = 'idle';
+        } else if (dist <= this.attackRange && this.attackCooldown <= 0) {
+            this.state = 'windup';
+            this.stateTimer = 0;
+        } else if (dist > this.attackRange * 0.8) {
+            this.state = 'approaching';
+            const step = this.speed * speedMod * dt / dist;
+            const x = this.x + dx * step, y = this.y + dy * step;
+            if (!isBlockedAt(x, this.y)) this.x = x;
+            if (!isBlockedAt(this.x, y)) this.y = y;
+        } else {
+            this.state = 'idle';
+        }
+    }
+
     aiLingering(dt, dx, dy, dist, speedMod) {
         // AVOIDANCE AS IDENTITY.
         // The Lingering doesn't want to fight. It approaches, then retreats at the last moment.
@@ -7176,7 +7081,7 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
         }
         
         // === ERUPTION TRIGGER — proximity threshold ===
-        if (!this.isErupting && !this.isSpent && dist < this.getAggroRange()) {
+        if (this.state !== 'triggered' && !this.isErupting && !this.isSpent && dist < this.getAggroRange()) {
             this.state = 'triggered';
             this.stateTimer = 0;
         }
@@ -8301,35 +8206,63 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
     }
 }
 
+function placeEnemy(type, originX, originY) {
+    const hub = WORLD_SIZE / 2;
+    const clearance = type === 'hollow_warden' ? 0.55 : 0.28;
+    const canSpawn = (x, y) => {
+        const distance = Math.hypot(x - hub, y - hub);
+        if (distance < HUB_SAFE_RADIUS + 2 || distance > 41 ||
+            world.tiles[Math.round(x)]?.[Math.round(y)]?.type === 'haze') return false;
+        if (Math.hypot(x - player.x, y - player.y) < 2.5) return false;
+        if (isBlockedAt(x, y) || isBlockedAt(x + clearance, y) || isBlockedAt(x - clearance, y) ||
+            isBlockedAt(x, y + clearance) || isBlockedAt(x, y - clearance)) return false;
+        return enemies.every(e => e.dead || Math.hypot(e.x - x, e.y - y) >= clearance + 0.35);
+    };
+    const spawnAt = (x, y) => {
+        const enemy = new Enemy(type, x, y);
+        enemies.push(enemy);
+        return enemy;
+    };
+    if (canSpawn(originX, originY)) return spawnAt(originX, originY);
+
+    // Try the closest positions first so packs keep their authored grouping.
+    for (let radius = 0.5; radius <= 9; radius += 0.5) {
+        for (let i = 0; i < 16; i++) {
+            const angle = i * Math.PI / 8;
+            const x = originX + Math.cos(angle) * radius;
+            const y = originY + Math.sin(angle) * radius;
+            if (canSpawn(x, y)) return spawnAt(x, y);
+        }
+    }
+    // A dense lot can exhaust the local search. Check the rest of the Verge.
+    const extent = 41;
+    for (let x = hub - extent; x <= hub + extent; x++) {
+        for (let y = hub - extent; y <= hub + extent; y++) {
+            if (canSpawn(x, y)) return spawnAt(x, y);
+        }
+    }
+    return null;
+}
+
 function spawnEnemies() {
-    enemies = [];
+    enemies = bossEntity && !bossEntity.dead ? [bossEntity] : [];
     const hubX = WORLD_SIZE / 2;
     const hubY = WORLD_SIZE / 2;
     
-    // Helper: ensure spawns are outside hub
     const minSpawnDist = HUB_SAFE_RADIUS + 2;
-    function safeSpawn(type, x, y) {
-        const d = Math.sqrt((x - hubX) ** 2 + (y - hubY) ** 2);
-        if (d < minSpawnDist) {
-            const a = Math.atan2(y - hubY, x - hubX);
-            x = hubX + Math.cos(a) * minSpawnDist;
-            y = hubY + Math.sin(a) * minSpawnDist;
-        }
-        enemies.push(new Enemy(type, x, y));
-    }
-    
+
     // The Lingering — scattered across the verge
     for (let i = 0; i < 8; i++) {
         const angle = Math.random() * Math.PI * 2;
         const dist = minSpawnDist + Math.random() * 12;
-        safeSpawn('lingering', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist);
+        placeEnemy('lingering', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist);
     }
     
     // The Watchful — along fence lines and structures
     for (let i = 0; i < 4; i++) {
         const angle = (i / 4) * Math.PI * 2;
         const dist = minSpawnDist + 2 + Math.random() * 5;
-        safeSpawn('watchful', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist);
+        placeEnemy('watchful', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist);
     }
     
     // The Huddled — in groups
@@ -8339,7 +8272,7 @@ function spawnEnemies() {
         const gx = hubX + Math.cos(gAngle) * gDist;
         const gy = hubY + Math.sin(gAngle) * gDist;
         for (let i = 0; i < 4; i++) {
-            safeSpawn('huddled', gx + (Math.random() - 0.5) * 2, gy + (Math.random() - 0.5) * 2);
+            placeEnemy('huddled', gx + (Math.random() - 0.5) * 2, gy + (Math.random() - 0.5) * 2);
         }
     }
     
@@ -8347,32 +8280,32 @@ function spawnEnemies() {
     for (let i = 0; i < 6; i++) {
         const dAngle = Math.random() * Math.PI * 2;
         const dDist = minSpawnDist + 3 + Math.random() * 15;
-        safeSpawn('deferred', hubX + Math.cos(dAngle) * dDist, hubY + Math.sin(dAngle) * dDist);
+        placeEnemy('deferred', hubX + Math.cos(dAngle) * dDist, hubY + Math.sin(dAngle) * dDist);
     }
     
     // The Rehearsed — patrol paths
     for (let i = 0; i < 4; i++) {
         const angle = Math.random() * Math.PI * 2;
         const dist = 15 + Math.random() * 10;
-        enemies.push(new Enemy('rehearsed', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist));
+        placeEnemy('rehearsed', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist);
     }
     
     // The Burdened — rare, heavy
     for (let i = 0; i < 2; i++) {
         const angle = Math.random() * Math.PI * 2;
         const dist = 18 + Math.random() * 8;
-        enemies.push(new Enemy('burdened', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist));
+        placeEnemy('burdened', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist);
     }
     
     // The Drifting — harassment
     for (let i = 0; i < 5; i++) {
         const angle = Math.random() * Math.PI * 2;
         const dist = 8 + Math.random() * 18;
-        enemies.push(new Enemy('drifting', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist));
+        placeEnemy('drifting', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist);
     }
     
     // The Remembered — rare
-    enemies.push(new Enemy('remembered', hubX + 20, hubY - 15));
+    placeEnemy('remembered', hubX + 20, hubY - 15);
 }
 
 // ============================================================
@@ -8916,15 +8849,9 @@ function throttleArray(arr) {
 
 // support for hysteresis when deciding whether to skip tile rows
 // we keep skipping extremely rare to avoid visual glitches; only when perfQuality plunges
-let tileStep = 1;
 let _lastPerfQuality = 1;
 function updateTileStep(perfQuality) {
     // only skip if perfQuality is disastrous
-    if (tileStep === 1 && perfQuality < 0.2) {
-        tileStep = 2;
-    } else if (tileStep === 2 && perfQuality > 0.4) {
-        tileStep = 1;
-    }
     _lastPerfQuality = perfQuality;
 }
 
@@ -10488,14 +10415,8 @@ const SKILL_DATA = [
 function renderCanvasHUD() {
     const W = canvas.width;
     const H = canvas.height;
-    // Calculate the visible portion of the internal canvas when CSS-scaled & cropped.
-    // This lets HUD elements (orbs, skill bar, ammo) anchor to the visible region instead
-    // of being pushed off-screen when the canvas is zoomed to fill the viewport.
-    const vp = getViewportDims();
-    const displayScale = Math.max(vp.w / FIXED_CANVAS_W, vp.h / FIXED_CANVAS_H);
-    const visibleCanvasH = vp.h / displayScale; // in internal canvas pixels
-    const visibleTop = Math.round((H - visibleCanvasH) / 2);
-    const visibleBottom = Math.round(visibleTop + visibleCanvasH);
+    const visibleTop = 0;
+    const visibleBottom = H;
 
     // Scale based on canvas size but with a much higher minimum for readability
     const rawScale = Math.min(W / 1920, H / 1080);
@@ -11359,12 +11280,8 @@ function renderTerrain(cam) {
     const endX = Math.min(WORLD_SIZE, Math.ceil(maxWX) + pad);
     const endY = Math.min(WORLD_SIZE, Math.ceil(maxWY) + pad);
     
-    const useTextures = groundDirtPattern && groundHubPattern;
-    
-    // if performance is poor, skip every other tile row/column to reduce load
-    const step = tileStep;
-    for (let x = startX; x < endX; x += step) {
-        for (let y = startY; y < endY; y += step) {
+    for (let x = startX; x < endX; x++) {
+        for (let y = startY; y < endY; y++) {
             if (!world.tiles[x] || !world.tiles[x][y]) continue;
             const tile = world.tiles[x][y];
             const pos = worldToScreen(x, y);
@@ -11377,9 +11294,6 @@ function renderTerrain(cam) {
             if (sx < -TILE_W * 2 || sx > vw2 + TILE_W * 2 || 
                 sy < -TILE_H * 2 || sy > vh2 + TILE_H * 2) continue;
             
-            const s = tile.shade;
-            const v = tile.variation;
-            const isHub = tile.type === 'hub_stone' || tile.type === 'hub_edge';
             const isHaze = tile.type === 'haze';
             
             // Draw slightly oversized diamond to prevent subpixel gaps (extra padding for zoom)
@@ -11400,106 +11314,21 @@ function renderTerrain(cam) {
                 ctx.lineTo(sx - hw, sy);
                 ctx.closePath();
                 ctx.fill();
-            } else if (useTextures) {
-                // Textured tile rendering — use pre-clipped diamond canvases
-                // Choose appropriate ground pattern for the tile type
-                let pattern;
-                switch (tile.type) {
-                    case 'hub_stone':
-                    case 'hub_edge':
-                        pattern = groundHubPattern;
-                        break;
-                    case 'road':
-                        pattern = groundRoadPattern || groundDirtPattern;
-                        break;
-                    case 'asphalt':
-                        pattern = groundAsphaltPattern || groundDirtPattern;
-                        break;
-                    case 'concrete':
-                        pattern = groundConcretePattern || groundDirtPattern;
-                        break;
-                    default:
-                        pattern = groundDirtPattern;
-                }
-                // Apply shade variation via globalAlpha and color overlay
-                ctx.globalAlpha = 0.75 + s * 0.25;
-                ctx.drawImage(pattern, 
-                    sx - pattern.width / 2, 
-                    sy - pattern.height / 2);
-                ctx.globalAlpha = 1;
-                
-                // Color overlay for tile type variation
-                let overlayR, overlayG, overlayB, overlayA;
-                switch (tile.type) {
-                    case 'hub_stone':
-                        overlayR = 55; overlayG = 45; overlayB = 35; overlayA = 0.08 + v * 0.04;
-                        break;
-                    case 'hub_edge':
-                        overlayR = 40; overlayG = 36; overlayB = 30; overlayA = 0.1;
-                        break;
-                    case 'deadgrass':
-                        overlayR = 35; overlayG = 40; overlayB = 28; overlayA = 0.08 + v * 0.06;
-                        break;
-                    case 'path':
-                        overlayR = 50; overlayG = 42; overlayB = 35; overlayA = 0.06;
-                        break;
-                    case 'road':
-                        overlayR = 48; overlayG = 48; overlayB = 50; overlayA = 0.05 + v * 0.03;
-                        break;
-                    case 'asphalt':
-                        overlayR = 36; overlayG = 36; overlayB = 38; overlayA = 0.06 + v * 0.03;
-                        break;
-                    case 'concrete':
-                        overlayR = 58; overlayG = 58; overlayB = 60; overlayA = 0.04 + v * 0.02;
-                        break;
-                    default: // dirt
-                        overlayR = 38; overlayG = 32; overlayB = 26; overlayA = 0.03 + v * 0.03;
-                }
-                ctx.fillStyle = `rgba(${overlayR},${overlayG},${overlayB},${overlayA})`;
-                ctx.beginPath();
-                ctx.moveTo(sx, sy - hh);
-                ctx.lineTo(sx + hw, sy);
-                ctx.lineTo(sx, sy + hh);
-                ctx.lineTo(sx - hw, sy);
-                ctx.closePath();
-                ctx.fill();
             } else {
-                // Fallback: solid color diamonds (improved colors)
-                let r, g, b;
-                switch (tile.type) {
-                    case 'hub_stone':
-                        r = Math.floor((52 + v * 10) * s);
-                        g = Math.floor((44 + v * 8) * s);
-                        b = Math.floor((36 + v * 6) * s);
-                        break;
-                    case 'hub_edge':
-                        r = Math.floor((46 + v * 8) * s);
-                        g = Math.floor((40 + v * 6) * s);
-                        b = Math.floor((32 + v * 5) * s);
-                        break;
-                    case 'deadgrass':
-                        r = Math.floor((42 + v * 8) * s);
-                        g = Math.floor((44 + v * 10) * s);
-                        b = Math.floor((30 + v * 5) * s);
-                        break;
-                    case 'path':
-                        r = Math.floor((50 + v * 8) * s);
-                        g = Math.floor((42 + v * 6) * s);
-                        b = Math.floor((36 + v * 5) * s);
-                        break;
-                    default: // dirt
-                        r = Math.floor((42 + v * 10) * s);
-                        g = Math.floor((36 + v * 8) * s);
-                        b = Math.floor((28 + v * 5) * s);
+                const variants = groundAtlas[tile.type] || groundAtlas.dirt;
+                const texture = variants[Math.floor(tile.variation * variants.length)];
+                ctx.drawImage(texture, sx - (TILE_W + 1) / 2, sy - (TILE_H + 0.5) / 2,
+                    TILE_W + 1, TILE_H + 0.5);
+                const axis = tile.streetAxis;
+                if ((axis === 'x' && x % 2 === 0) || (axis === 'y' && y % 2 === 0)) {
+                    const direction = axis === 'x' ? 1 : -1;
+                    ctx.strokeStyle = 'rgba(155,137,94,.53)';
+                    ctx.lineWidth = 1.4;
+                    ctx.beginPath();
+                    ctx.moveTo(sx - 8, sy - direction * 4);
+                    ctx.lineTo(sx + 8, sy + direction * 4);
+                    ctx.stroke();
                 }
-                ctx.fillStyle = `rgb(${r},${g},${b})`;
-                ctx.beginPath();
-                ctx.moveTo(sx, sy - hh);
-                ctx.lineTo(sx + hw, sy);
-                ctx.lineTo(sx, sy + hh);
-                ctx.lineTo(sx - hw, sy);
-                ctx.closePath();
-                ctx.fill();
             }
         }
     }
@@ -11531,8 +11360,9 @@ function drawStructure(ctx, sx, sy, s) {
     
     if (img) {
         let scale = isChapel ? 1.4 : 0.9 + (s.w + s.h) * 0.06;
-        // If this structure uses a house asset, render it ~1.5× larger as requested
-        if (s.asset && String(s.asset).startsWith('house')) scale *= 1.5;
+        // Suburban sprites fit their lot. Holdfast buildings keep their landmark scale.
+        if (s.suburban) scale = 0.73;
+        else if (s.asset && s.asset.startsWith('house')) scale *= 1.5;
         const h = (isChapel ? 160 : 110) * scale;
         const w = h * (img.width / img.height);
         
@@ -11545,7 +11375,7 @@ function drawStructure(ctx, sx, sy, s) {
         // Draw building sprite
         ctx.save();
         ctx.translate(sx, sy);
-        ctx.drawImage(img, -w / 2, -h + h * 0.15, w, h);
+        ctx.drawImage(img, -w / 2, s.suburban ? -h + TILE_H * s.h * 0.38 : -h + h * 0.15, w, h);
         ctx.restore();
         
         // Warm lantern glow
@@ -12458,7 +12288,7 @@ function drawPlayer(ctx, sx, sy) {
 function drawEnemySprite(ctx, img, dx, dy, dw, dh, enemyType) {
     if (!img) return;
     // Burdened asset has a large green platform base — crop 30% from bottom
-    const cropFraction = enemyType === 'burdened' ? 0.30 : 0.05;
+    const cropFraction = enemyType === 'burdened' ? 0.30 : enemyType === 'hollow_warden' ? 0 : 0.05;
     const cropBottom = Math.floor(img.height * cropFraction);
     const srcH = img.height - cropBottom;
     ctx.drawImage(img, 0, 0, img.width, srcH, dx, dy, dw, dh);
@@ -12474,6 +12304,7 @@ function drawEnemy(ctx, sx, sy, e, cam) {
         case 'burdened': spriteH = 90; break;
         case 'huddled': spriteH = 60; break;
         case 'deferred': spriteH = 52; break;
+        case 'hollow_warden': spriteH = 110; break;
         default: spriteH = 70; break;
     }
     
@@ -12937,7 +12768,8 @@ function drawEnemy(ctx, sx, sy, e, cam) {
         ctx.fill();
         
         if (img) {
-            drawEnemySprite(ctx, img, sx - spriteW / 2, sy - spriteH + 5, spriteW, spriteH, e.type);
+            const collapse = spriteH * (1 - Math.min(1, dt) * 0.7);
+            drawEnemySprite(ctx, img, sx - spriteW / 2, sy - collapse + 5, spriteW, collapse, e.type);
         } else {
             ctx.fillStyle = '#252220';
             ctx.fillRect(sx - 8, sy - spriteH + 8, 16, spriteH - 10);
@@ -13202,18 +13034,41 @@ function drawEnemy(ctx, sx, sy, e, cam) {
         }
     }
     
+    if (e.isBoss) {
+        const windup = e.state === 'windup' ? Math.min(1, e.stateTimer / 0.75) : 0;
+        const slam = e.state === 'slam' ? Math.max(0, 1 - e.stateTimer / 0.45) : 0;
+        eScaleY += windup * 0.14 - slam * 0.20;
+        eScaleX += slam * 0.16;
+        eLean -= e.facing * windup * 0.13;
+        if (windup || slam) {
+            ctx.strokeStyle = `rgba(221,105,77,${0.18 + 0.5 * Math.max(windup, slam)})`;
+            ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            ctx.ellipse(sx, sy, e.attackRange * TILE_W / Math.SQRT2,
+                e.attackRange * TILE_H / Math.SQRT2, 0, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+    }
+
+    const attackAge = T - e.lastAttackAt;
+    const recoil = attackAge < 0.24 ? Math.sin(Math.PI * attackAge / 0.24) : 0;
+    const stride = Math.sin(e.stridePhase) * e.motion;
+    eLean += stride * 0.025 + recoil * e.facing * 0.05;
+    eBobY -= Math.abs(stride) * (e.isBoss ? 0.7 : 1.9);
+    eScaleY -= recoil * 0.06;
+
     ctx.globalAlpha = eAlpha;
     
     // ── 8-DIRECTIONAL ENEMY RENDERING ──
     // Direction-based scaling: narrower when facing toward/away, wider in profile
-    const eDir = e.facingDir || 2;
+    const eDir = e.facingDir ?? 2;
     const eDirScaleX = [0.92, 0.96, 1.0, 0.96, 0.92, 0.96, 1.0, 0.96]; // N/S narrow, E/W full
     const eFlipX = (eDir >= 5 && eDir <= 7);
     const eDirWidth = eDirScaleX[eDir];
     
     if (img) {
         // Burdened has large green platform base — crop 30%; others get 5%
-        const cropFrac = (e.type === 'burdened' || e.type === 'hollow_warden') ? 0.30 : 0.05;
+        const cropFrac = e.type === 'burdened' ? 0.30 : e.isBoss ? 0 : 0.05;
         const cropBottom = Math.floor(img.height * cropFrac);
         const srcH = img.height - cropBottom;
         ctx.save();
@@ -13221,7 +13076,18 @@ function drawEnemy(ctx, sx, sy, e, cam) {
         if (eFlipX) ctx.scale(-1, 1);
         ctx.rotate(eLean);
         ctx.scale(Math.abs(eScaleX) * eDirWidth, eScaleY);
-        ctx.drawImage(img, 0, 0, img.width, srcH, -spriteW / 2, -spriteH + 5, spriteW, spriteH);
+        // Slightly shear successive bands so shoulders, clothing and feet
+        // move with different phases, while the baseline stays planted.
+        const bands = 8;
+        for (let band = 0; band < bands; band++) {
+            const fraction = band / bands;
+            const bandStart = Math.floor(srcH * fraction);
+            const bandEnd = Math.min(srcH, Math.ceil(srcH * (band + 1) / bands) + 1);
+            const offset = (1 - fraction) * (stride * Math.cos(fraction * Math.PI * 2) * 2.5 + recoil * 3.5);
+            ctx.drawImage(img, 0, bandStart, img.width, bandEnd - bandStart,
+                -spriteW / 2 + offset, -spriteH + 5 + spriteH * bandStart / srcH,
+                spriteW, spriteH * (bandEnd - bandStart) / srcH);
+        }
         ctx.restore();
     } else {
         const colors = {
@@ -13948,7 +13814,10 @@ function updateUI() {
     const potionIcon = document.getElementById('potion-icon');
     const potionCount = document.getElementById('potion-count');
     if (potionCount) potionCount.textContent = `${player.potions}/${player.maxPotions}`;
-    if (potionIcon && loadedImages.uiHealthOrb) potionIcon.src = ASSETS.uiHealthOrb;
+    if (potionIcon && potionIcon.hidden && loadedImages.uiHealthOrb) {
+        potionIcon.src = ASSETS.uiHealthOrb;
+        potionIcon.hidden = false;
+    }
     
     // ── GREYLINE EFFECT ON UI LAYOUT ──
     const side = greyline.getSide();
@@ -14301,12 +14170,12 @@ function spawnWave() {
     
     if (type === 'huddled') {
         for (let i = 0; i < 3; i++) {
-            enemies.push(new Enemy('huddled', 
+            placeEnemy('huddled',
                 ex + (Math.random() - 0.5) * 2, 
-                ey + (Math.random() - 0.5) * 2));
+                ey + (Math.random() - 0.5) * 2);
         }
     } else {
-        enemies.push(new Enemy(type, ex, ey));
+        placeEnemy(type, ex, ey);
     }
 }
 
@@ -14490,7 +14359,7 @@ async function init() {
 
     // Load assets in background while title plays
     await loadImages();
-    createTilePatterns();
+    groundAtlas = createGroundAtlas(document, TILE_W, TILE_H);
     world.generate();
     
     // Audio context will be created on first user gesture
@@ -14956,14 +14825,14 @@ let bossEntity = null;
 
 function spawnBoss() {
     if (bossSpawned) return;
-    bossSpawned = true;
     const hubX = WORLD_SIZE / 2, hubY = WORLD_SIZE / 2;
     const angle = Math.PI * 0.25 + (Math.random() - 0.5) * 0.5; // NE-ish
     const dist = 28 + Math.random() * 6;
     const bx = hubX + Math.cos(angle) * dist;
     const by = hubY + Math.sin(angle) * dist;
-    bossEntity = new Enemy('hollow_warden', bx, by);
-    enemies.push(bossEntity);
+    bossEntity = placeEnemy('hollow_warden', bx, by);
+    if (!bossEntity) return;
+    bossSpawned = true;
     camera.addShake(6);
 }
 
@@ -15102,11 +14971,7 @@ function renderMinimap() {
 function renderQuestNotification() {
     if (!questSystem._notification || questSystem._notifTimer <= 0) return;
     const W = canvas.width;
-    // Compute visible top so the notification appears inside the cropped view
-    const displayScale = Math.max(window.innerWidth / FIXED_CANVAS_W, window.innerHeight / FIXED_CANVAS_H);
-    const visibleCanvasH = window.innerHeight / displayScale; // in internal canvas pixels
-    const visibleTop = Math.round((canvas.height - visibleCanvasH) / 2);
-    const notifY = visibleTop + 60;
+    const notifY = 60;
 
     const alpha = Math.min(1, questSystem._notifTimer, questSystem._notifTimer > 3.5 ? (4.5 - questSystem._notifTimer) * 2 : 1);
     ctx.save();
