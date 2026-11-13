@@ -1,0 +1,77 @@
+{
+  "schema": "house-a-variants-v1",
+  "variants": {
+    "house.a.02": {
+      "familyId": "house.master.a",
+      "structuralSeed": 18428,
+      "footprintM": [
+        6.0,
+        6.0
+      ],
+      "maxHeightM": 4.8,
+      "storeys": 1,
+      "anchor": [
+        0.5,
+        1.0
+      ],
+      "wallHeightM": 2.6856203614167002,
+      "roofPitchDegrees": 33.59802181853683,
+      "eaveOverhangM": 0.3547842106675055,
+      "ridgeAxis": "X",
+      "doorPosition": 0.32,
+      "windowPosition": 0.72,
+      "windowWidthM": 0.9,
+      "windowHeightM": 1.24,
+      "windowSillM": 0.85,
+      "attachments": []
+    },
+    "house.a.03": {
+      "familyId": "house.master.a",
+      "structuralSeed": 18429,
+      "footprintM": [
+        5.2,
+        5.5
+      ],
+      "maxHeightM": 4.8,
+      "storeys": 1,
+      "anchor": [
+        0.5,
+        1.0
+      ],
+      "wallHeightM": 2.65,
+      "roofPitchDegrees": 35,
+      "eaveOverhangM": 0.32,
+      "ridgeAxis": "X",
+      "doorPosition": 0.7,
+      "windowPosition": 0.3,
+      "windowWidthM": 1.05,
+      "windowHeightM": 1.24,
+      "windowSillM": 0.85,
+      "attachments": []
+    },
+    "house.a.04": {
+      "familyId": "house.master.a",
+      "structuralSeed": 18430,
+      "footprintM": [
+        7.0,
+        5.2
+      ],
+      "maxHeightM": 4.8,
+      "storeys": 1,
+      "anchor": [
+        0.5,
+        1.0
+      ],
+      "wallHeightM": 2.8,
+      "roofPitchDegrees": 27,
+      "eaveOverhangM": 0.44,
+      "ridgeAxis": "X",
+      "doorPosition": 0.36,
+      "windowPosition": 0.7,
+      "windowWidthM": 1.4,
+      "windowHeightM": 1.1,
+      "windowSillM": 1.05,
+      "attachments": []
+    }
+  }
+}

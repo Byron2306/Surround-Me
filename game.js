@@ -1,5 +1,19 @@
 import { createGroundAtlas } from './verge-ground.mjs';
-
+import { civicStart, civicAssetIds, civicLocation, civicHazePools, civicDressingSites,
+    civicSigns, civicStreetCells, huddledPositions, prepareCivicTown, buildCivicGround, drawCivicGround,
+    drawCivicLandmark, drawCivicSign, civicHuddledPose, civicStrikeClear } from './world-art/civic-town.mjs?v=1';
+import { createFringeArtKit } from './world-art/fringe-art-kit-v1/kit-runtime.mjs?v=1';
+import { advanceSamsarraDepth, createSamsarraEvent, samsarraEnemyForm } from './world-art/samsarra-event.mjs?v=2';
+import { createGreylineSonorisDirector, greylinePulseBpm } from './world-art/greyline-sonoris-director.mjs?v=4';
+import { drawRestraintSamsarraVeil } from './world-art/restraint-samsarra-veil.mjs?v=3';
+import { createHazeRenderer } from './world-art/haze-renderer.mjs?v=1';
+import { enemyTellScale } from './world-art/enemy-greyline.mjs';
+import { buildFringeDressing, drawFringeDressing, drawFringeLamp, loadFringeCraftArt } from './world-art/fringe-craft-art.mjs?v=1';
+import { clearLingeringStrike, drawEnemyCraftForm, drawEnemyCraftFrame, enemyCraftPose, lingeringWindup } from './world-art/fringe-craft-motion.mjs?v=1';
+import { basicHitDamage, dashDuration, dashFrame, walkVelocity } from './world-art/combat-motion.mjs?v=93';
+import { variantStructure, loadVariant, reviewLayout } from './world-art/house-variant-runtime.mjs?v=97';
+import { prepareHouseRuntime } from './world-art/house-runtime-alpha.mjs?v=2';
+import { structureAnchor, structureBounds, actorHeight, viewportSize, placementClear, wallFace } from './world-art/live-world-spatial.mjs';
 // SURROUND ME — The Verge (Area 1)
 // An isometric dark fantasy action RPG that asks whether the player can remain present
 // ============================================================
@@ -16,7 +30,7 @@ let gameState = GameState.TITLE;
 let stateTransitionTimer = 0;
 
 // configuration for audio tweaks, persisted to localStorage (JSON)
-const audioConfig = {
+const AUDIO_CONFIG_DEFAULTS = {
     hubMelodyVolume: 1.0,
     hubBassVolume: 1.0,
     subBassVolume: 1.0,
@@ -26,7 +40,10 @@ const audioConfig = {
     neutralHarmony: 1.0,
     tempoFactor: 1.0,
     titleVolume: 1.0,
+    neutralBpm: 100,
+    sonorisVolume: 0.95,
 };
+const audioConfig = { ...AUDIO_CONFIG_DEFAULTS };
 function saveAudioConfig() {
     try { localStorage.setItem('audioConfig', JSON.stringify(audioConfig)); }
     catch(e) { console.warn('save config failed', e); }
@@ -37,25 +54,46 @@ function loadAudioConfig() {
         if (s) Object.assign(audioConfig, JSON.parse(s));
     } catch(e){ console.warn('load config failed', e); }
         // ensure neutralBpm exists
-        if (!audioConfig.neutralBpm) audioConfig.neutralBpm = 100;
+        if (!(Number(audioConfig.neutralBpm) >= 60 && Number(audioConfig.neutralBpm) <= 140)) audioConfig.neutralBpm = 100;
+        const vol = Number(audioConfig.sonorisVolume);
+        audioConfig.sonorisVolume = Number.isFinite(vol) ? Math.max(0, Math.min(1.2, vol)) : 0.95;
 }
 loadAudioConfig();
 // clamp to valid ranges
 audioConfig.tempoFactor = audioConfig.tempoFactor || 1.0;
 
-// Demo mode used on title screen: force greyline to neutral/compulsion/restraint
+// Preview the score without changing the player's Greyline.
 let demoMode = null;
-let demoTimer = 0;
-let demoOriginalG = 0;
-function startTitleDemo(side) {
-    // remember previous value to restore
-    demoOriginalG = greyline?.g ?? 0;
+let demoEpoch = 0;
+let demoFrame = 0;
+
+function stopTitleDemo() {
+    demoEpoch++;
+    cancelAnimationFrame(demoFrame);
+    if (demoMode && audioEngine) audioEngine.master.gain.value = 0;
+    demoMode = null;
+}
+
+async function startTitleDemo(side) {
+    if (gameState !== GameState.TITLE) return;
+    stopTitleMusic();
+    stopTitleDemo();
+    const epoch = demoEpoch;
+    if (!await ensureAudioUnlocked() || epoch !== demoEpoch || gameState !== GameState.TITLE) return;
+    initAudio();
+    if (!audioEngine) return;
     demoMode = side;
-    demoTimer = 8.0;
-    if (side === 'neutral') greyline.g = 0;
-    else if (side === 'compulsion') greyline.g = 1;
-    else if (side === 'restraint') greyline.g = -1;
-    hubMelTimer = hubBassTimer = hubPadTimer = 0;
+    audioEngine.resetMusicPhrase();
+    let last = performance.now();
+    const end = last + 12000;
+    function preview(now) {
+        if (epoch !== demoEpoch || gameState !== GameState.TITLE) return;
+        if (now >= end) { stopTitleDemo(); return; }
+        audioEngine.update(Math.min(.05, (now - last) / 1000), side);
+        last = now;
+        demoFrame = requestAnimationFrame(preview);
+    }
+    demoFrame = requestAnimationFrame(preview);
 }
 
 // Hub safety radius — enemies cannot enter or attack within this range
@@ -72,7 +110,16 @@ let enemiesSpawned = false;
 // ============================================================
 // ASSET URLS
 // ============================================================
+const SAMSARRA_HOUSES = { houseA01Suburb: 'a01', houseA02: 'a02', houseA03: 'a03', houseA04: 'a04' };
+const SAMSARRA_ENEMIES = ['lingering', 'watchful'];
+const SAMSARRA_FORMS = ['ordinary', 'compulsion', 'restraint'];
+const samsarraAsset = name => `./world-art/samsarra/${name}.webp`;
+const samsarraEvent = createSamsarraEvent();
+const fringeArtKit = createFringeArtKit({ enabled: new URLSearchParams(location.search).get('fringeart') === '1' });
+window.__fringeArtKitStatus = () => fringeArtKit.status();
 const ASSETS = {
+    ...Object.fromEntries(SAMSARRA_ENEMIES.flatMap(type =>
+        SAMSARRA_FORMS.map(form => [`${type}-${form}`, samsarraAsset(`${type}-${form}`)]))),
     aliza: 'https://rosebud.ai/assets/aliza-definitive-final.webp?HLrg',
     // 8-directional Aliza sprites (S, N, E, SE, NE — W/SW/NW are mirrored)
     alizaSouth: 'https://rosebud.ai/assets/aliza-south.webp?XlR7',
@@ -101,10 +148,19 @@ const ASSETS = {
     deferred: './assets/enemies/deferred.webp',
     remembered: './assets/enemies/remembered.webp',
     hollow_warden: './assets/enemies/hollow_warden.svg',
+    // Ground textures
+    groundDirt: 'https://rosebud.ai/assets/ground-dirt-tile.webp?JQ74',
+    groundHub: 'https://rosebud.ai/assets/ground-hub-tile.webp?2ABi',
+    // Local road/asphalt/concrete tiles (used by procedural mapping)
+    groundAsphalt: './asphalt1.png',
+    groundConcrete: './concrete.png',
+    groundRoad: './road1.png',
     // Hub house variants (randomized per shack)
     house1: './house1.png',
     house2: './house2.png',
     house3: './house3.png',
+    // G1.8 governed House A master, 2048 physical / 512 logical canvas.
+    houseAG18Governed: './world-art/hd-iso-v1/calibration/house-a01-provisional-2048.png',
     // Environment assets
     deadTree1: 'https://rosebud.ai/assets/dead-tree.webp?1SVp',
     deadTree2: 'https://rosebud.ai/assets/dead-tree-2.webp?eqpz',
@@ -202,7 +258,46 @@ const ALIZA_CUSTOM_CROUCH= ['Aliza1crouch','Aliza2crouch','Aliza3crouch','Aliza4
 const DIR_TO_CUSTOM_INDEX = [4, 3, 2, 1, 0, 7, 6, 5]; // swapped L/R pairs: NE↔NW, E↔W, SE↔SW
 
 
-let groundAtlas;
+// Pre-created tile pattern canvases for textured ground rendering
+let groundDirtPattern = null;
+let groundHubPattern = null;
+let groundAsphaltPattern = null;
+let groundConcretePattern = null;
+let groundRoadPattern = null;
+let tilePatternCanvas = null;
+let groundAtlas = null;
+
+function createTilePatterns() {
+    // Create a clipped diamond pattern from the ground textures
+    const dirtImg = loadedImages.groundDirt;
+    const hubImg = loadedImages.groundHub;
+    const asphaltImg = loadedImages.groundAsphalt;
+    const concreteImg = loadedImages.groundConcrete;
+    const roadImg = loadedImages.groundRoad;
+
+    function makeTileCanvas(img) {
+        const tc = document.createElement('canvas');
+        tc.width = TILE_W + 4;
+        tc.height = TILE_H + 4;
+        const tctx = tc.getContext('2d');
+        // Clip to diamond — slightly oversized to prevent zoom seams
+        tctx.beginPath();
+        tctx.moveTo(tc.width / 2, 0);
+        tctx.lineTo(tc.width, tc.height / 2);
+        tctx.lineTo(tc.width / 2, tc.height);
+        tctx.lineTo(0, tc.height / 2);
+        tctx.closePath();
+        tctx.clip();
+        tctx.drawImage(img, 0, 0, tc.width, tc.height);
+        return tc;
+    }
+
+    if (dirtImg) groundDirtPattern = makeTileCanvas(dirtImg);
+    if (hubImg) groundHubPattern = makeTileCanvas(hubImg);
+    if (asphaltImg) groundAsphaltPattern = makeTileCanvas(asphaltImg);
+    if (concreteImg) groundConcretePattern = makeTileCanvas(concreteImg);
+    if (roadImg) groundRoadPattern = makeTileCanvas(roadImg);
+}
 
 const loadedImages = {};
 let imagesLoaded = 0;
@@ -226,7 +321,13 @@ function loadImages() {
             const img = new Image();
             img.crossOrigin = 'anonymous';
             img.onload = () => {
-                loadedImages[key] = img;
+                try {
+                    loadedImages[key] = key === 'houseAG18Governed'
+                        ? prepareHouseRuntime(img, document) : img;
+                } catch (error) {
+                    loadedImages[key] = null;
+                    console.error('House runtime image preparation failed', error);
+                }
                 imagesLoaded++;
                 if (imagesLoaded >= totalImages) resolve();
             };
@@ -259,6 +360,10 @@ let _subBeatTimer = 0;
 let _subLastPulse = 0;
 let audioStarted = false;
 let titleMusicEngine = null;
+let titleMusicPending = false;
+let titleMusicEpoch = 0;
+let titleMasterGain = null;
+let titleMediaMaster = null;
 let _actx = null; // Shared AudioContext
 let _audioUnlocked = false;
 
@@ -432,8 +537,9 @@ function nf(n) { return NOTE_FREQ[n] || 220; }
 // TITLE SCREEN MUSIC — Haunting ambient, pure Web Audio API
 // ============================================================
 function initTitleMusic() {
-    // Prevent duplicate engines
-    if (titleMusicEngine) return;
+    if (gameState !== GameState.TITLE || demoMode || titleMusicPending || titleMusicEngine) return;
+    const epoch = ++titleMusicEpoch;
+    const current = () => epoch === titleMusicEpoch && gameState === GameState.TITLE;
     // create/use hidden audio element for MP3
     let audioEl = document.getElementById('title-mp3');
     if (!audioEl) {
@@ -447,7 +553,8 @@ function initTitleMusic() {
     }
     let triedEngine = false;
     const startProcedural = () => {
-        if (triedEngine) return; triedEngine = true;
+        if (!current() || triedEngine) return;
+        triedEngine = true;
         try {
             const ctx = getAudioCtx();
             const master = createGain(ctx, 1.0);
@@ -483,10 +590,8 @@ function initTitleMusic() {
             let choirTimer = 12;
             const choirNotes = ['C2', 'Ab1', 'Eb2', 'Bb1', 'G1'];
             let choirIdx = 0;
-            let fading = false;
-            titleMusicEngine = {
+            const engine = {
                 update(dt) {
-                    if (fading) return;
                     drone1.frequency.value = 44 + Math.sin(performance.now() * 0.001 * 0.015 * Math.PI * 2) * 4;
                     windFilter.frequency.value = 100 + Math.sin(performance.now() * 0.001 * 0.025 * Math.PI * 2) * 65;
                     noteTimer -= dt;
@@ -504,26 +609,28 @@ function initTitleMusic() {
                         playNote(ctx, master, nf(cn), 'triangle', 2, 6, 0.03);
                     }
                 },
-                fadeOut() {
-                    fading = true;
-                    const now = ctx.currentTime;
-                    master.gain.linearRampToValueAtTime(0, now + 3);
-                    setTimeout(() => { try { drone1.stop(); drone2.stop(); wind.stop(); } catch(e){} }, 3500);
+                stop() {
+                    master.gain.value = 0;
+                    for (const source of [drone1, drone2, wind]) {
+                        try { source.stop(); } catch {}
+                    }
+                    meter.disconnect();
                 }
             };
+            titleMusicEngine = engine;
             try { playNote(ctx, master, nf('C3'), 'sine', 0.01, 0.4, 0.14); } catch(e) {}
             let lastT = performance.now();
             function titleMusicLoop() {
-                if (!titleMusicEngine) return;
+                if (!current() || titleMusicEngine !== engine) return;
                 const now = performance.now();
                 const dt = Math.min(0.1, (now - lastT) / 1000);
                 lastT = now;
-                titleMusicEngine.update(dt);
-                if (gameState === GameState.TITLE || gameState === GameState.CONTROLS) requestAnimationFrame(titleMusicLoop);
+                engine.update(dt);
+                requestAnimationFrame(titleMusicLoop);
             }
             requestAnimationFrame(titleMusicLoop);
             function meterLoop() {
-                if (!window.__titleMeter) return;
+                if (!current() || window.__titleMeter !== meter) return;
                 const data = new Uint8Array(window.__titleMeter.frequencyBinCount);
                 window.__titleMeter.getByteTimeDomainData(data);
                 let sum = 0;
@@ -539,34 +646,56 @@ function initTitleMusic() {
             if (document.getElementById('audio-status')) document.getElementById('audio-status').innerText = 'Audio: playing (title)';
         } catch(e) { console.warn('[Audio] Title music init failed:', e); }
     };
-    // now try mp3; route it through AudioContext for metering
-    {
+    // The element can begin playing before its play promise settles.
+    if (!titleMediaMaster) {
         const ctx = getAudioCtx();
-        const master = createGain(ctx, 1.0);
-        const meter = ctx.createAnalyser(); meter.fftSize = 512;
-        master.connect(meter); meter.connect(ctx.destination);
-        window.__titleMeter = meter;
-        if (!window.__titleMediaSource) {
-            try {
-                window.__titleMediaSource = ctx.createMediaElementSource(audioEl);
-                window.__titleMediaSource.connect(master);
-            } catch(e) {
-                console.warn('[Audio] media element source creation failed', e);
-            }
-        } else {
-            // already created, just ensure it's connected
-            try { window.__titleMediaSource.connect(master); } catch(e){}
+        const master = createGain(ctx, audioConfig.titleVolume ?? 1);
+        try {
+            const meter = ctx.createAnalyser();
+            meter.fftSize = 512;
+            window.__titleMediaSource = ctx.createMediaElementSource(audioEl);
+            window.__titleMediaSource.connect(master);
+            master.connect(meter);
+            meter.connect(ctx.destination);
+            window.__titleMeter = meter;
+            titleMediaMaster = master;
+        } catch (error) {
+            console.warn('[Audio] Title media routing unavailable', error);
         }
     }
+    titleMasterGain = titleMediaMaster;
+    if (titleMasterGain) titleMasterGain.gain.value = audioConfig.titleVolume ?? 1;
     audioEl.volume = 0.8;
+    titleMusicPending = true;
     audioEl.play().then(() => {
-        console.log('[Audio] ✓ Title MP3 playing');
-        if (document.getElementById('audio-status')) document.getElementById('audio-status').innerText = 'Audio: playing (mp3)';
-        titleMusicEngine = { fadeOut() { audioEl.pause(); audioEl.currentTime = 0; } };
-    }).catch(e => {
-        console.warn('[Audio] Title MP3 failed, falling back to procedural engine', e);
+        if (!current()) {
+            if (gameState !== GameState.TITLE || (!titleMusicPending && !titleMusicEngine)) audioEl.pause();
+            return;
+        }
+        titleMusicPending = false;
+        titleMusicEngine = { stop() {} };
+        const status = document.getElementById('audio-status');
+        if (status) status.innerText = 'Audio: title cue';
+    }).catch(error => {
+        if (!current()) return;
+        titleMusicPending = false;
+        console.warn('[Audio] Title MP3 failed, falling back to procedural engine', error);
         startProcedural();
     });
+}
+
+function stopTitleMusic() {
+    titleMusicEpoch++;
+    titleMusicPending = false;
+    const audioEl = document.getElementById('title-mp3');
+    if (audioEl) {
+        audioEl.pause();
+        audioEl.currentTime = 0;
+    }
+    if (titleMasterGain) titleMasterGain.gain.value = 0;
+    titleMusicEngine?.stop();
+    titleMusicEngine = null;
+    window.__titleMeter = null;
 }
 
 function initAudio() {
@@ -578,7 +707,7 @@ function initAudio() {
             ctx.resume().then(() => console.log('[Audio] initAudio: resumed OK'));
         }
         console.log('[Audio] initAudio called, ctx state:', ctx.state);
-        const master = createGain(ctx, audioSettings.master);
+        const master = createGain(ctx, gameState === GameState.TITLE ? 0 : audioSettings.master);
         master.connect(ctx.destination);
         const sfxBus = createGain(ctx, audioSettings.sfx);
         sfxBus.connect(master);
@@ -800,9 +929,9 @@ function initAudio() {
                 }, i * stepMs);
             }
         }
+
         // ── HELPER: play a "piano" note (sine + harmonics, medium attack) ──
         function playPiano(dest, freq, vol, decay) {
-
             const now = ctx.currentTime;
             const o1 = ctx.createOscillator(); o1.type = 'sine'; o1.frequency.value = freq;
             const g1 = ctx.createGain();
@@ -870,11 +999,30 @@ function initAudio() {
             src.start(); src.stop(ctx.currentTime + dur + 0.05);
         }
 
+        // Source stems remain outside the per-frame sound generator. The old oscillator
+        // score is only an explicit fallback while loading, on decode failure or at 0 volume.
+        const sonoris = createGreylineSonorisDirector(ctx, musicBus);
+        void sonoris.load().then(ok => {
+            if (ok) console.info('[SONORIS V4] DECODED=4; LIVE_STEMS=ACTIVE');
+        });
+        window.__surroundMeSonorisStatus = () => ({
+            ready: sonoris.ready, failed: sonoris.failed, error: sonoris.error,
+            volume: audioConfig.sonorisVolume, inHub: isPlayerInHub(),
+        });
         audioEngine = {
-            started: true, ctx, sfxBus, musicBus, gunBus, master, ambGain,
+            started: true, ctx, sfxBus, musicBus, gunBus, master, ambGain, sonoris,
             combatIntensity: 0,
             // internal envelope state for sub-bass pulses
             _subPulseLevel: 0.0001,
+            _subPulseAmplitude: 0,
+            _smoothedPulseBpm: 96,
+            resetMusicPhrase() {
+                hubPhraseIdx = hubNoteIdx = hubMelTimer = hubBeatTimer = hubStrumTimer = 0;
+                hubPadTimer = 5;
+                _subBeatTimer = _subLastPulse = 0;
+                this._subPulseAmplitude = 0;
+                this._smoothedPulseBpm = 96;
+            },
             applySettings() {
                 master.gain.value = audioSettings.master;
                 // Boost SFX bus heavily so attacks, gunshots etc. punch
@@ -1045,9 +1193,9 @@ function initAudio() {
 
             playGunHit(isCrit = 0) {
                 if (!audioSettings.enabled) return;
-                const now = audioCtx.currentTime;
-                const osc = audioCtx.createOscillator();
-                const g = audioCtx.createGain();
+                const now = ctx.currentTime;
+                const osc = ctx.createOscillator();
+                const g = ctx.createGain();
                 osc.type = 'triangle';
                 osc.frequency.setValueAtTime(isCrit ? 820 : 520, now);
                 osc.frequency.exponentialRampToValueAtTime(isCrit ? 360 : 280, now + 0.06);
@@ -1061,9 +1209,9 @@ function initAudio() {
 
             playReload() {
                 if (!audioSettings.enabled) return;
-                const now = audioCtx.currentTime;
-                const osc = audioCtx.createOscillator();
-                const g = audioCtx.createGain();
+                const now = ctx.currentTime;
+                const osc = ctx.createOscillator();
+                const g = ctx.createGain();
                 osc.type = 'square';
                 osc.frequency.setValueAtTime(110, now);
                 osc.frequency.exponentialRampToValueAtTime(70, now + 0.08);
@@ -1077,9 +1225,9 @@ function initAudio() {
 
             playReloadComplete() {
                 if (!audioSettings.enabled) return;
-                const now = audioCtx.currentTime;
-                const osc = audioCtx.createOscillator();
-                const g = audioCtx.createGain();
+                const now = ctx.currentTime;
+                const osc = ctx.createOscillator();
+                const g = ctx.createGain();
                 osc.type = 'triangle';
                 osc.frequency.setValueAtTime(260, now);
                 osc.frequency.exponentialRampToValueAtTime(520, now + 0.06);
@@ -1091,24 +1239,14 @@ function initAudio() {
                 osc.stop(now + 0.11);
             },
 
-update(dt) {
-                // if audio globally disabled, skip everything
+update(dt, preview = null, event = null) {
                 if (!audioSettings.enabled) return;
-                const inHub = isPlayerInHub();
-                const side = greyline.getSide();
-                const extr = greyline.getExtremity();
+                const inHub = preview === null ? isPlayerInHub() : false;
+                const side = preview === 'neutral' ? 'greyline' : preview ?? greyline.getSide();
+                const g = preview === 'compulsion' ? 1 : preview === 'restraint' ? -1
+                    : preview === 'neutral' ? 0 : (greyline.g ?? 0);
+                const extr = preview === null ? greyline.getExtremity() : Math.abs(g);
                 const t = performance.now() * 0.001;
-                
-                // demo override forces a fixed greyline value during title demo
-                if (demoMode) {
-                    demoTimer -= dt;
-                    if (demoTimer <= 0) {
-                        demoMode = null;
-                        greyline.g = demoOriginalG;
-                    }
-                }
-                // Greyline audio controls (never silent; flux = legible, extremes = distorted)
-                const g = demoMode ? (demoMode === 'compulsion' ? 1 : demoMode === 'restraint' ? -1 : 0) : (greyline.g ?? 0);
                 const a = Math.min(1, Math.abs(g));
                 const wB = 1.0 - a; // balance weight — high when near centre
                 const wL = Math.max(0, -g);
@@ -1116,7 +1254,7 @@ update(dt) {
                 const v = greyline.v ?? 0;
                 const samTier = greyline.samTier ?? 0;
 
-                const aud = greyline.knobs?.aud || {};
+                const aud = preview === null ? (greyline.knobs?.aud || {}) : {};
                 // aud.mute is a restraint-driven dampening knob (0..1)
                 const audMute = clamp01(aud.mute ?? 0);
                 const musicMuteFactor = 1 - audMute * 0.85; // how much to attenuate music layers
@@ -1135,7 +1273,8 @@ update(dt) {
                 // ── CONTINUOUS LFOs ──
                 subOsc.frequency.value = 33 + Math.sin(t * 0.05) * 4;
                 subOsc2.frequency.value = 49.5 + Math.sin(t * 0.032) * 2;
-                ambFilter.frequency.value = 140 + Math.sin(t * 0.125) * 65;
+                const fallTone = event?.polarity === 'restraint' ? -52 : 85;
+                ambFilter.frequency.value = 140 + Math.sin(t * 0.125) * 65 + fallTone * (event?.intensity ?? 0);
                 vergeDrone2.frequency.value = 82.5 + Math.sin(t * 0.314) * 2;
                 vergeDrone3.frequency.value = 41.25 + Math.sin(t * 0.07) * 1.5;
                 crackleFilter.frequency.value = 2200 + Math.sin(t * 5) * 600;
@@ -1144,42 +1283,22 @@ update(dt) {
                 // ── SUB‑BASS REGIMES (explicit BPM / pulse envelopes) ──
                 // reuse existing `side` and `extr` declared above
 
-                // target BPM per behavioural state
-                let targetSubBpm = 90; // default (balance will override)
-                if (side === 'compulsion') {
-                    // Dramatic, dance/metal-like fast pulses (scaled by extremity)
-                    targetSubBpm = 160 + Math.round(extr * 160); // ~160 → 320+ BPM
-                } else if (side === 'greyline') {
-                    // Steady 4/4 — moderate, consistent beat
-                    targetSubBpm = 96; // steady quarter-note feel
-                } else if (side === 'restraint') {
-                    // Long, monotonous drone — very slow pulses
-                    targetSubBpm = 24; // long drone
-                }
-
-                // expose for debugging/UI
-                audioEngine.subBpm = targetSubBpm;
-
-                // beat pulse timing: use quarter-note rate so the pulse follows the 4/4 beat
-                // (seconds per quarter note = 60 / BPM)
-                const pulseInterval = (60 / Math.max(1, targetSubBpm)) / (audioConfig.tempoFactor || 1); // seconds per quarter‑note
+                // Smooth per-state pulse curve: the Greyline is continuous, not three
+                // hard tempo switches. Preserve decaying amplitude across frames.
+                const targetSubBpm = greylinePulseBpm(g, samTier);
+                const bpmEase = 1 - Math.exp(-Math.max(0, dt) * 2.2);
+                this._smoothedPulseBpm += (targetSubBpm - this._smoothedPulseBpm) * bpmEase;
+                audioEngine.subBpm = this._smoothedPulseBpm;
+                const pulseInterval = 60 / (Math.max(1, this._smoothedPulseBpm) * (audioConfig.tempoFactor || 1));
                 _subBeatTimer += dt;
-
-                // compute a short pulse envelope when a beat occurs
-                let pulseLevel = 0;
+                const decay = 0.12 * wR + 0.30 * wB + 0.90 * wL;
+                this._subPulseAmplitude *= Math.exp(-Math.max(0, dt) / Math.max(0.01, decay));
                 while (_subBeatTimer >= pulseInterval) {
                     _subBeatTimer -= pulseInterval;
-                    // pulse strength scales with state (compulsion strongest)
-                    if (side === 'compulsion') pulseLevel = Math.max(pulseLevel, 1.0);
-                    else if (side === 'greyline') pulseLevel = Math.max(pulseLevel, 0.55);
-                    else pulseLevel = Math.max(pulseLevel, 0.25);
+                    this._subPulseAmplitude = Math.max(this._subPulseAmplitude, 1.0 * wR + 0.55 * wB + 0.25 * wL);
                     _subLastPulse = TIME.elapsed;
                 }
-
-                // envelope decay for pulse (fast attack, variable decay)
-                const sincePulse = TIME.elapsed - (_subLastPulse || 0);
-                const decay = side === 'compulsion' ? 0.12 : side === 'greyline' ? 0.30 : 0.9;
-                const env = Math.max(0, pulseLevel * Math.exp(-sincePulse / decay));
+                const env = this._subPulseAmplitude;
 
                 // base sub level (drone) and pulse additive
                 const baseSub = 0.015 + (lf * 0.025); // baseline influenced by aud.lf
@@ -1210,15 +1329,22 @@ update(dt) {
                 const BASS_BOOST   = 2.5;
                 const PAD_BOOST    = 2.5;
 
-                // keep hub melody playing at full target level no matter where the player is
-                const hubMelTarget = 0.28 * MELODY_BOOST * musicMuteFactor * (audioConfig.hubMelodyVolume ?? 1);
+                sonoris.update({g, samTier, inHub,
+                    volume: audioConfig.sonorisVolume * musicMuteFactor,
+                    danger: combatIntensity});
+                const sonorisActive = sonoris.ready && audioConfig.sonorisVolume > 0;
+                // Never layer the cheap procedural hub arpeggiator over the Sonoris score.
+                const hubMelTarget = (inHub && !sonorisActive ? 0.28 : 0) * MELODY_BOOST * musicMuteFactor * (audioConfig.hubMelodyVolume ?? 1);
                 hubMelodyGain.gain.value += (hubMelTarget - hubMelodyGain.gain.value) * smoothRate;
                 // make bass much more insistent – higher target and stronger boost
-                const hubBassTarget = (inHub ? 0.22 : 0) * BASS_BOOST * musicMuteFactor * (audioConfig.hubBassVolume ?? 1);
+                const hubBassTarget = (inHub && !sonorisActive ? 0.22 : 0) * BASS_BOOST * musicMuteFactor * (audioConfig.hubBassVolume ?? 1);
                 hubBassGain.gain.value += (hubBassTarget - hubBassGain.gain.value) * smoothRate;
-                const hubPadTarget = (inHub ? 0.08 : 0) * PAD_BOOST * musicMuteFactor;
+                const hubPadTarget = (inHub && !sonorisActive ? 0.08 : 0) * PAD_BOOST * musicMuteFactor;
                 hubPadGain.gain.value += (hubPadTarget - hubPadGain.gain.value) * smoothRate;
 
+                if (sonorisActive || !inHub) {
+                    hubStrumGain.gain.setTargetAtTime(0, ctx.currentTime, 0.20);
+                }
                 // Verge drones: fade in as you leave hub (attenuated by music mute)
                 // Verge / compulsion: increase drone/industrial intensity so compulsion sounds chaotic
                 const compScale = (side === 'compulsion') ? (1.8 + extr * 0.8) : 1.0;
@@ -1246,7 +1372,7 @@ update(dt) {
                 // ═══════════════════════════════════
                 // HUB MUSIC — Tristram-style fingerpicking
                 // ═══════════════════════════════════
-                if (hubMelodyGain.gain.value > 0.01) {
+                if (!sonorisActive && inHub && hubMelodyGain.gain.value > 0.01) {
                     hubMelTimer += dt;
                     if (hubMelTimer > hubMelInterval) {
                         hubMelTimer = 0;
@@ -1404,7 +1530,7 @@ update(dt) {
                     
                     // ── LONELY PIANO MELODY — SH2 Promise/Laura style ──
                     vergeMelCooldown -= dt;
-                    if (vergeMelActive) {
+                    if (!sonorisActive && vergeMelActive) {
                         vergeMelTimer += dt;
                         if (vergeMelTimer > vergeMelInterval) {
                             vergeMelTimer = 0;
@@ -1431,7 +1557,7 @@ update(dt) {
                                 vergeMelCooldown = (9 + Math.random() * 11 + wL * 8 - wR * 5) / Math.max(0.85, tempoScale);
                             }
                         }
-                    } else if (vergeMelCooldown <= 0 && !inHub && (extr > 0.10 || wR > 0.25 || wB > 0.55) && Math.random() < (0.45 + dens * 0.25 + wR * 0.15 + wB * 0.10 - wL * 0.10)) {
+                    } else if (!sonorisActive && vergeMelCooldown <= 0 && !inHub && (extr > 0.10 || wR > 0.25 || wB > 0.55) && Math.random() < (0.45 + dens * 0.25 + wR * 0.15 + wB * 0.10 - wL * 0.10)) {
                         // Allow melody to spawn more often when Greyline is balanced (more tones)
                         vergeMelActive = true;
                         vergeMelTimer = 0;
@@ -2545,23 +2671,21 @@ function toggleForcedViewport1920() { if (window.__FORCE_VIEWPORT) clearForcedVi
 
 function resize() {
     const dims = getViewportDims();
-    const aspect = dims.w / Math.max(1, dims.h);
-    // Match the visible aspect while preserving room for both HUD columns.
-    const logicalW = Math.max(640, FIXED_CANVAS_H * aspect);
-    const logicalH = logicalW / Math.max(0.1, aspect);
-    const limit = Math.min(1, Math.sqrt(2800000 / (logicalW * logicalH)));
-    canvas.width = Math.round(logicalW * limit);
-    canvas.height = Math.round(logicalH * limit);
+    const logical = viewportSize(dims.w, dims.h);
+    canvas.width = logical.w;
+    canvas.height = logical.h;
     const scale = dims.w / canvas.width;
     const scaledW = dims.w;
     const scaledH = dims.h;
 
+    // Apply scaled dimensions so the canvas fills the viewport horizontally when possible
     canvas.style.width = scaledW + 'px';
     canvas.style.height = scaledH + 'px';
     canvas.style.position = 'fixed';
     canvas.style.left = '50%';
     canvas.style.top = '50%';
     canvas.style.transform = 'translate(-50%, -50%)';
+    // Keep the game surface within the viewport.
     canvas.style.maxWidth = 'none';
     canvas.style.maxHeight = 'none';
     canvas.style.imageRendering = 'auto';
@@ -2598,15 +2722,15 @@ function resize() {
             tc.style.zIndex = 0;
         }
 
-        // Record visible canvas rectangle (in internal canvas pixels) for HUD alignment/debug
+        // Record the canvas rectangle for HUD alignment/debug
         const left = Math.round((dims.w - scaledW) / 2);
         const top = Math.round((dims.h - scaledH) / 2);
-        const visibleCanvasH = canvas.height;
+        const visibleCanvasH = Math.round(dims.h / scale);
         const visibleTop = Math.round((canvas.height - visibleCanvasH) / 2);
         const visibleBottom = Math.round(visibleTop + visibleCanvasH);
         window._visibleCanvas = { left, top, scaledW, scaledH, scale, visibleTop, visibleBottom };
 
-        // Reposition DOM HUD elements so they stay inside the canvas area
+        // Reposition DOM HUD elements inside the current canvas.
         try {
             const toViewportY = (internalY) => Math.round(top + (internalY / canvas.height) * scaledH);
             const toViewportX = (internalX) => Math.round(left + (internalX / canvas.width) * scaledW);
@@ -2648,6 +2772,12 @@ window.addEventListener('resize', resize);
 resize();
 
 // ============================================================
+import {
+    ALIZA_GUN_DURATION, advanceAlizaMotion, alizaDirection, alizaFrame, alizaPose,
+    alizaWorldDirection, createAlizaMotion, drawAlizaFrame, loadAlizaAtlas,
+} from './world-art/aliza-animation.mjs?v=continuous-run-1';
+let alizaAtlas = null;
+
 // ISOMETRIC HELPERS
 // ============================================================
 const ISO_ANGLE = Math.PI / 6;
@@ -2703,13 +2833,22 @@ const DIR8_NAMES = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 // ============================================================
 // CAMERA
 // ============================================================
-const CAMERA_ZOOM = 2.0625; // Adjusted zoom so 1280×720 closely matches the vertical/D2 feel of 1024×768@2.2
+const CAMERA_ZOOM = 2.4; // Wider world view; actor sizes remain in canonical metres.
+const PLAYER_HEIGHT_M = 1.72;
+const VERTICAL_PX_PER_M = 8 * Math.sqrt(6);
+// Render scale only: keep the character's feet, hitboxes and world projection fixed.
+const ACTOR_SPRITE_SCALE = 1.30;
+const PLAYER_SPRITE_H = PLAYER_HEIGHT_M * VERTICAL_PX_PER_M * ACTOR_SPRITE_SCALE;
+const HOUSE_VARIANT_REVIEW = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('house-variant') === 'house.a.02';
+let houseVariantMetadata = null;
+const HOUSE_G1_8_TEST = HOUSE_VARIANT_REVIEW || typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('house-test') === '1';
 // Global shake multiplier (can be tuned). Lower to reduce overall camera shake intensity.
 const CAMERA_SHAKE_MULTIPLIER = 1.0;
 const camera = {
     x: 0, y: 0,
     targetX: 0, targetY: 0,
-    zoom: CAMERA_ZOOM,
+    zoom: HOUSE_VARIANT_REVIEW ? 3.0 : CAMERA_ZOOM,
     shake: 0,
     shakeDecay: 0.92,
     update() {
@@ -2791,7 +2930,7 @@ function isOccludedBetween(x1, y1, x2, y2) {
             if (!p) continue;
             // only treat large prop types as occluders by default
             if (!(p.type === 'deadTree1' || p.type === 'deadTree2' || p.type === 'oldWell' || p.type === 'woodenCart' || p.type === 'hayPile' || p.type === 'lanternPost')) continue;
-            const pr = p.collisionRadius ?? 0.6 * (p.scale || 1.0);
+            const pr = (p.scale || 1.0) * TILE_W * 0.30;
             const d2 = _segmentPointDistSq(x1, y1, x2, y2, p.x, p.y);
             if (d2 < pr*pr) return true;
         }
@@ -2800,7 +2939,7 @@ function isOccludedBetween(x1, y1, x2, y2) {
     if (world && world.trees) {
         for (const t of world.trees) {
             if (!t) continue;
-            const tr = t.collisionRadius ?? 0.6 * (t.height || 1.0);
+            const tr = (t.height || 1.0) * TILE_W * 0.25;
             const d2 = _segmentPointDistSq(x1, y1, x2, y2, t.x, t.y);
             if (d2 < tr*tr) return true;
         }
@@ -2810,12 +2949,49 @@ function isOccludedBetween(x1, y1, x2, y2) {
 
 // World collision test used for player movement blocking. Returns true when (wx,wy)
 // intersects any outside asset that should be impassable (structures, props, trees, fences, wall segments).
+const suburbQuery = new URLSearchParams(window.location.search);
+const CIVIC_REVIEW = suburbQuery.get('district') === 'civic';
+const SUBURB_REVIEW = CIVIC_REVIEW || suburbQuery.get('suburb') === '1';
+const FOUR_HOUSE_FRINGE = CIVIC_REVIEW || suburbQuery.get('fringe') === '4';
+const samsarraMode = suburbQuery.get('samsarra');
+const SAMSARRA_REVIEW = SUBURB_REVIEW && (samsarraMode === '1' || (FOUR_HOUSE_FRINGE && samsarraMode !== '0'));
+let samsarraStatus = null;
+let fringeHazePools = null;
+let civicGround = null;
+let civicStatus = null;
+let civicDressing = [];
+const samsarraHouseImages = new Map();
+
+async function loadSamsarraHouses() {
+    await Promise.all(Object.entries(SAMSARRA_HOUSES).flatMap(([asset, name]) =>
+        SAMSARRA_FORMS.map(async side => {
+            if (!loadedImages[asset]) return;
+            const image = new Image();
+            image.src = samsarraAsset(`${name}-${side}`);
+            try {
+                await image.decode();
+                samsarraHouseImages.set(`${asset}-${side}`, image);
+            } catch (error) {
+                console.warn('Samsarra house material could not load', name, side, error);
+            }
+        })));
+}
+const SHOW_SUBURB_LABELS = suburbQuery.has('layout-labels');
+const BASIC_WEAPON_PACE = SUBURB_REVIEW ? .75 : 1;
+let suburbReview = null;
+let fringeDressing = null;
+let fringeCraftArt = {};
+const FRINGE_CRAFT_ART = suburbQuery.get('fringecraft') !== '0';
+let drawSuburbGround = null;
+
 function isBlockedAt(wx, wy) {
+    if (suburbReview?.blocked(wx,wy)) return true;
     // Structures (axis-aligned rectangles)
     if (world && world.structures) {
         for (const s of world.structures) {
             if (!s) continue;
-            if (wx > s.x - 0.5 && wx < s.x + s.w + 0.5 && wy > s.y - 0.5 && wy < s.y + s.h + 0.5) return true;
+            const b = structureBounds(s);
+            if (wx > b.minX && wx < b.maxX && wy > b.minY && wy < b.maxY) return true;
         }
     }
 
@@ -2960,10 +3136,11 @@ const greyline = {
     update(dt, ctx = {}) {
         const cfg = this._cfg;
 
-        // --- Legacy movement integration (kept) ---
+        // Integrate the same impulse at any refresh rate using the 30 Hz tuning.
         this.lastValue = this.value;
-        this.value += this.momentum * dt;
-        this.momentum *= 0.94;
+        const momentumRetention = 0.94 ** (dt * 30);
+        this.value += this.momentum * (1 - momentumRetention) / (30 * (1 - 0.94));
+        this.momentum *= momentumRetention;
 
         // Gentle return-to-center: the world does not let you *stay* at an edge forever.
         // Stronger when you are far from center; softer in the flux band.
@@ -3123,10 +3300,7 @@ const greyline = {
             0.10 * clamp01(this.stagnationTimer / 6.0) // standing still too long becomes fixation
         );
 
-        // Samsarra: entrenchment when extremity is sustained + persisted
-        const fill = cfg.samFill * Math.max(0, this.a - cfg.samATheta) * this.persist;
-        const decay = cfg.samDecay * (1.0 - this.a); // centre helps empty it
-        this.sam = clamp01(this.sam + dt * (fill - decay));
+        this.sam = advanceSamsarraDepth(this.sam, this.a, this.persist, dt, cfg);
 
         // Tiering
         this.samTier = (this.sam < cfg.samT1) ? 0 :
@@ -3444,6 +3618,80 @@ const psychStats = {
 // ============================================================
 // INPUT
 // ============================================================
+function installHouseTestMobileControls() {
+    if (!HOUSE_G1_8_TEST || typeof document === 'undefined') return;
+    if (document.getElementById('house-test-mobile-controls')) return;
+
+    const wrap = document.createElement('div');
+    wrap.id = 'house-test-mobile-controls';
+    wrap.style.position = 'fixed';
+    wrap.style.left = '18px';
+    wrap.style.bottom = '18px';
+    wrap.style.zIndex = '5000';
+    wrap.style.display = 'grid';
+    wrap.style.gridTemplateColumns = '56px 56px 56px';
+    wrap.style.gridTemplateRows = '56px 56px 56px';
+    wrap.style.gap = '6px';
+    wrap.style.touchAction = 'none';
+    wrap.style.userSelect = 'none';
+    wrap.style.webkitUserSelect = 'none';
+
+    const makeButton = (label, key, col, row) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = label;
+        b.dataset.key = key;
+        b.style.gridColumn = String(col);
+        b.style.gridRow = String(row);
+        b.style.border = '1px solid rgba(230,210,170,0.55)';
+        b.style.borderRadius = '12px';
+        b.style.background = 'rgba(8,8,8,0.72)';
+        b.style.color = 'rgba(245,230,200,0.95)';
+        b.style.font = '700 20px monospace';
+        b.style.touchAction = 'none';
+
+        const down = (e) => {
+            e.preventDefault();
+            input.keys[key] = true;
+            try { b.setPointerCapture?.(e.pointerId); } catch (_) {}
+        };
+        const up = (e) => {
+            e.preventDefault();
+            input.keys[key] = false;
+        };
+
+        b.addEventListener('pointerdown', down);
+        b.addEventListener('pointerup', up);
+        b.addEventListener('pointercancel', up);
+        b.addEventListener('lostpointercapture', up);
+        b.addEventListener('touchstart', down, { passive: false });
+        b.addEventListener('touchend', up, { passive: false });
+        b.addEventListener('touchcancel', up, { passive: false });
+
+        wrap.appendChild(b);
+    };
+
+    makeButton('▲', 'w', 2, 1);
+    makeButton('◀', 'a', 1, 2);
+    makeButton('▶', 'd', 3, 2);
+    makeButton('▼', 's', 2, 3);
+
+    const tag = document.createElement('div');
+    tag.textContent = 'HOUSE TEST';
+    tag.style.gridColumn = '1 / span 3';
+    tag.style.gridRow = '3';
+    tag.style.alignSelf = 'end';
+    tag.style.justifySelf = 'center';
+    tag.style.transform = 'translateY(22px)';
+    tag.style.font = '10px monospace';
+    tag.style.letterSpacing = '1px';
+    tag.style.color = 'rgba(230,210,170,0.75)';
+    tag.style.pointerEvents = 'none';
+    wrap.appendChild(tag);
+
+    document.body.appendChild(wrap);
+}
+
 const input = {
     keys: {},
     mouse: { x: 0, y: 0, down: false, clicked: false, rightDown: false, rightClicked: false },
@@ -3455,6 +3703,11 @@ const input = {
             if (e.key === ' ') e.preventDefault();
         });
         window.addEventListener('keyup', e => this.keys[e.key.toLowerCase()] = false);
+        window.addEventListener('blur', () => {
+            this.keys = {};
+            this.mouse.down = this.mouse.rightDown = false;
+            this.clearFrame();
+        });
 
         // ensure the canvas handles pointer/touch events and doesn't trigger gestures
         canvas.style.touchAction = 'none';
@@ -3483,6 +3736,7 @@ const input = {
         
         // also listen globally in capture phase so clicks pass through light DOM overlays
         const globalDown = e => {
+            if (e.target?.closest?.('[data-fringe-controls]')) return;
             const rect = canvas.getBoundingClientRect();
             const px = e.clientX || (e.touches && e.touches[0] && e.touches[0].clientX);
             const py = e.clientY || (e.touches && e.touches[0] && e.touches[0].clientY);
@@ -3663,41 +3917,145 @@ const world = {
             }
         }
 
-        // Reserve two continuous streets and their sidewalks in each ten-tile block.
-        const block = 10;
-        const inSuburb = (x, y) => {
-            const distance = Math.hypot(x - hubX, y - hubY);
-            return distance >= HUB_SAFE_RADIUS + 3 && distance <= 40;
-        };
-        for (let x = 0; x < WORLD_SIZE; x++) {
-            for (let y = 0; y < WORLD_SIZE; y++) {
-                if (!inSuburb(x, y)) continue;
-                const column = x % block, row = y % block;
-                const alongY = column === 4, alongX = row === 5;
-                const tile = this.tiles[x][y];
-                if (alongX || alongY) {
-                    tile.type = 'road';
-                    tile.streetAxis = alongX && alongY ? 'junction' : alongX ? 'x' : 'y';
-                } else if (column === 3 || column === 5 || row === 4 || row === 6) {
-                    tile.type = 'sidewalk';
-                } else if (tile.type === 'road' || tile.type === 'asphalt' || tile.type === 'concrete') {
-                    tile.type = tile.variation < 0.65 ? 'deadgrass' : 'dirt';
-                }
-            }
-        }
+        // ---- Suburb block planner (tile-aligned) ----
+        // Stamp repeating 8x8 suburban blocks across the map (skip the hub).
+        const BLOCK_W = 8, BLOCK_H = 8;
+        const houseDensity = 0.55; // chance to place a house at each candidate lot
+        for (let bx = 0; bx < WORLD_SIZE; bx += BLOCK_W) {
+            for (let by = 0; by < WORLD_SIZE; by += BLOCK_H) {
+                // Skip blocks overlapping the hub
+                const blockCenterX = bx + BLOCK_W / 2;
+                const blockCenterY = by + BLOCK_H / 2;
+                if (Math.hypot(blockCenterX - hubX, blockCenterY - hubY) < HUB_SAFE_RADIUS + 6) continue;
 
-        // Lots are measured from their centers, with a full sidewalk between the
-        // collision rectangle and road. Even opposite corners leave a clear gap.
-        for (let bx = 0; bx < WORLD_SIZE; bx += block) {
-            for (let by = 0; by < WORLD_SIZE; by += block) {
-                for (const [lx, ly] of [[1, 2], [7.5, 2], [1, 8], [7.5, 8]]) {
-                    const x = bx + lx, y = by + ly;
-                    if (!inSuburb(x - 1.5, y - 1.5) || !inSuburb(x + 1.5, y + 1.5) ||
-                        !inSuburb(x + 1.5, y - 1.5) || !inSuburb(x - 1.5, y + 1.5) ||
-                        Math.random() > 0.78) continue;
-                    const asset = `house${1 + Math.floor(Math.random() * 3)}`;
-                    this.structures.push({ x: x - 0.8, y: y - 0.8, w: 1.6, h: 1.6,
-                        type: 'shack', label: 'House', asset, suburban: true });
+                // Local pattern (matches the Python sketch): vertical road at x=3, horizontal at y=4
+                // Apply within world bounds
+                for (let ly = 0; ly < BLOCK_H; ly++) {
+                    const wx = bx + 3; const wy = by + ly;
+                    if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE) {
+                        if (this.tiles[wx] && this.tiles[wx][wy]) this.tiles[wx][wy].type = 'road';
+                    }
+                }
+                for (let lx = 0; lx < BLOCK_W; lx++) {
+                    const wx = bx + lx; const wy = by + 4;
+                    if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE) {
+                        if (this.tiles[wx] && this.tiles[wx][wy]) this.tiles[wx][wy].type = 'asphalt';
+                    }
+                }
+
+                // Sidewalks (concrete) beside main roads
+                for (let ly = 0; ly < BLOCK_H; ly++) {
+                    for (const sx of [2, 4]) {
+                        const wx = bx + sx; const wy = by + ly;
+                        if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE && this.tiles[wx] && this.tiles[wx][wy]) {
+                            const tt = this.tiles[wx][wy].type;
+                            if (tt === 'dirt' || tt === 'deadgrass' || tt === 'path') this.tiles[wx][wy].type = 'concrete';
+                        }
+                    }
+                }
+                for (let lx = 0; lx < BLOCK_W; lx++) {
+                    for (const sy of [3, 5]) {
+                        const wx = bx + lx; const wy = by + sy;
+                        if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE && this.tiles[wx] && this.tiles[wx][wy]) {
+                            const tt = this.tiles[wx][wy].type;
+                            if (tt === 'dirt' || tt === 'deadgrass' || tt === 'path') this.tiles[wx][wy].type = 'concrete';
+                        }
+                    }
+                }
+
+                // Concrete pads at the intersection corners
+                const cornerPairs = [[3,2],[3,4],[5,2],[5,4]];
+                for (const [cy, cx] of cornerPairs) {
+                    const wx = bx + cx; const wy = by + cy;
+                    if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE && this.tiles[wx] && this.tiles[wx][wy]) {
+                        this.tiles[wx][wy].type = 'concrete';
+                    }
+                }
+
+                // Dirt lots in the four corner districts of the block
+                for (let y = 0; y <= 2; y++) for (let x = 0; x <= 1; x++) {
+                    const wx = bx + x, wy = by + y;
+                    if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE && this.tiles[wx] && this.tiles[wx][wy]) {
+                        this.tiles[wx][wy].type = (Math.random() < 0.5) ? 'dirt' : 'deadgrass';
+                    }
+                }
+                for (let y = 0; y <= 2; y++) for (let x = 5; x <= 7; x++) {
+                    const wx = bx + x, wy = by + y;
+                    if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE && this.tiles[wx] && this.tiles[wx][wy]) {
+                        this.tiles[wx][wy].type = (Math.random() < 0.5) ? 'dirt' : 'deadgrass';
+                    }
+                }
+                for (let y = 6; y <= 7; y++) for (let x = 0; x <= 1; x++) {
+                    const wx = bx + x, wy = by + y;
+                    if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE && this.tiles[wx] && this.tiles[wx][wy]) {
+                        this.tiles[wx][wy].type = (Math.random() < 0.5) ? 'dirt' : 'deadgrass';
+                    }
+                }
+                for (let y = 6; y <= 7; y++) for (let x = 5; x <= 7; x++) {
+                    const wx = bx + x, wy = by + y;
+                    if (wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE && this.tiles[wx] && this.tiles[wx][wy]) {
+                        this.tiles[wx][wy].type = (Math.random() < 0.5) ? 'dirt' : 'deadgrass';
+                    }
+                }
+
+                // Fill remaining empty-ish cells with concrete/dirt to tidy the block
+                for (let lx = 0; lx < BLOCK_W; lx++) {
+                    for (let ly = 0; ly < BLOCK_H; ly++) {
+                        const wx = bx + lx; const wy = by + ly;
+                        if (!(wx >= 0 && wx < WORLD_SIZE && wy >= 0 && wy < WORLD_SIZE)) continue;
+                        const tt = this.tiles[wx][wy].type;
+                        if (tt === 'deadgrass' || tt === 'path' || tt === 'dirt') {
+                            this.tiles[wx][wy].type = (Math.random() < 0.45) ? 'concrete' : 'dirt';
+                        }
+                    }
+                }
+
+                // Helper: check free placement (avoid overlaps)
+                const spotFree = (wx, wy) => {
+                    if (wx < 0 || wx >= WORLD_SIZE || wy < 0 || wy >= WORLD_SIZE) return false;
+                    if (!this.tiles[wx] || !this.tiles[wx][wy]) return false;
+                    if (this.tiles[wx][wy].type === 'haze' || this.tiles[wx][wy].type === 'hub_stone') return false;
+                    for (const s of this.structures) {
+                        if (Math.hypot(s.x - (wx + 0.5), s.y - (wy + 0.5)) < 1.6) return false;
+                    }
+                    return true;
+                };
+
+                // Place houses clearly along street edges (outer-of-sidewalk positions)
+                // Vertical road (local x=3) -> candidate house tiles at local x=1 and x=6
+                for (let ly = 0; ly < BLOCK_H; ly++) {
+                    const roadX = bx + 3, roadY = by + ly;
+                    if (!(roadX >= 0 && roadX < WORLD_SIZE && roadY >= 0 && roadY < WORLD_SIZE)) continue;
+                    const roadT = this.tiles[roadX][roadY].type;
+                    if (roadT === 'road' || roadT === 'asphalt') {
+                        const leftX = bx + 1; const rightX = bx + 6; const hy = by + ly;
+                        if (Math.random() < houseDensity && spotFree(leftX, hy)) {
+                            const asset = `house${1 + Math.floor(Math.random() * 3)}`;
+                            this.structures.push({ x: leftX + 0.5 - 0.12, y: hy + 0.5, w: 2, h: 2, type: 'shack', label: 'House', asset });
+                        }
+                        if (Math.random() < houseDensity && spotFree(rightX, hy)) {
+                            const asset = `house${1 + Math.floor(Math.random() * 3)}`;
+                            this.structures.push({ x: rightX + 0.5 + 0.12, y: hy + 0.5, w: 2, h: 2, type: 'shack', label: 'House', asset });
+                        }
+                    }
+                }
+
+                // Horizontal road (local y=4) -> candidate house tiles at local y=2 and y=6
+                for (let lx = 0; lx < BLOCK_W; lx++) {
+                    const roadX = bx + lx, roadY = by + 4;
+                    if (!(roadX >= 0 && roadX < WORLD_SIZE && roadY >= 0 && roadY < WORLD_SIZE)) continue;
+                    const roadT = this.tiles[roadX][roadY].type;
+                    if (roadT === 'road' || roadT === 'asphalt') {
+                        const topY = by + 2; const botY = by + 6; const hx = bx + lx;
+                        if (Math.random() < houseDensity && spotFree(hx, topY)) {
+                            const asset = `house${1 + Math.floor(Math.random() * 3)}`;
+                            this.structures.push({ x: hx + 0.5, y: topY + 0.5 - 0.12, w: 2, h: 2, type: 'shack', label: 'House', asset });
+                        }
+                        if (Math.random() < houseDensity && spotFree(hx, botY)) {
+                            const asset = `house${1 + Math.floor(Math.random() * 3)}`;
+                            this.structures.push({ x: hx + 0.5, y: botY + 0.5 + 0.12, w: 2, h: 2, type: 'shack', label: 'House', asset });
+                        }
+                    }
                 }
             }
         }
@@ -3719,9 +4077,46 @@ const world = {
             { x: hubX + 8, y: hubY - 1, w: 2, h: 3, type: 'storehouse', label: 'Armory' },
         );
 
+        // G1.8 in-game acceptance scene. Enabled only with ?house-test=1.
+        // s.x/s.y is the canonical House A ground anchor, not a top-left corner.
+        if (HOUSE_G1_8_TEST) {
+            this.structures.push({
+                x: HOUSE_VARIANT_REVIEW ? reviewLayout(hubX,hubY).master.x : hubX + 10,
+                y: HOUSE_VARIANT_REVIEW ? reviewLayout(hubX,hubY).master.y : hubY + 8,
+                w: 3.75,
+                h: 3.0,
+                type: 'governedHouseA',
+                asset: 'houseAG18Governed',
+                label: '[G1.8 HOUSE TEST]',
+                governedTest: true,
+                governedSprite: {
+                    logicalWidth: 512,
+                    logicalHeight: 512,
+                    anchorPixelX: 220,
+                    anchorPixelY: 334,
+                },
+                collisionBounds: {
+                    minX: -1.875,
+                    maxX: 1.875,
+                    minY: -3.0,
+                    maxY: 0.0,
+                },
+            });
+        }
+
+        if (HOUSE_VARIANT_REVIEW && houseVariantMetadata) {
+            const layout=reviewLayout(hubX,hubY);
+            this.structures.push(variantStructure(houseVariantMetadata,layout.variant.x,layout.variant.y));
+            const plots=this.structures.filter(s=>s.governedTest).map(structureBounds);
+            this.structures=this.structures.filter(s=>s.governedTest || !plots.some(p=>{
+                const b=structureBounds(s);
+                return b.minX<p.maxX+1 && b.maxX>p.minX-1 && b.minY<p.maxY+1.5 && b.maxY>p.minY-1;
+            }));
+        }
+
         // Assign randomized house sprites for shack-type structures (house1..house3)
         for (const s of this.structures) {
-            if (s.type === 'shack' && !s.asset) {
+            if (s.type === 'shack') {
                 const n = 1 + Math.floor(Math.random() * 3);
                 s.asset = `house${n}`;
                 // Nudge shacks slightly outward from hub center so NPCs are not hidden behind them
@@ -3765,6 +4160,14 @@ const world = {
             });
         }
         
+        for (let i=0; i<this.wallSegments.length; i++) {
+            const current=this.wallSegments[i];
+            const next=this.wallSegments[(i+1)%this.wallSegments.length];
+            if (Math.hypot(next.x-current.x,next.y-current.y)<2) {
+                current.end={x:next.x,y:next.y,height:next.height};
+            }
+        }
+
         // Gate markers — pillars flanking the exit
         const gL = gateAngle - gateHalfWidth;
         const gR = gateAngle + gateHalfWidth;
@@ -4063,21 +4466,30 @@ const world = {
             this.props.push({ x: px, y: py, type: 'lanternPost', scale: 0.5 + Math.random() * 0.1, flip: false, zOffset: -20 });
         }
         
-        const clearScenery = (item, radius) => {
-            const left = Math.round(item.x - radius), right = Math.round(item.x + radius);
-            const top = Math.round(item.y - radius), bottom = Math.round(item.y + radius);
-            for (let x = left; x <= right; x++) {
-                for (let y = top; y <= bottom; y++) {
-                    const tile = this.tiles[x]?.[y];
-                    if (tile?.streetAxis || tile?.type === 'sidewalk') return false;
+        const placedProps = [];
+        for (const prop of this.props) {
+            const radius = prop.collisionRadius ?? 0.6 * (prop.scale || 1);
+            if (HOUSE_VARIANT_REVIEW && !placementClear(prop.x,prop.y,this.structures.filter(s=>s.governedTest),3)) continue;
+            if (!placementClear(prop.x, prop.y, this.structures, radius)) continue;
+            if (placedProps.some(p => Math.hypot(p.x-prop.x, p.y-prop.y) < radius + (p.collisionRadius ?? 0.6*(p.scale || 1)))) continue;
+            placedProps.push(prop);
+        }
+        this.props = placedProps;
+        // Relocate authored NPCs locally instead of leaving them inside a new building.
+        for (const npc of this.npcs) {
+            if (!isBlockedAt(npc.x, npc.y) && placementClear(npc.x,npc.y,this.structures,0.3)) continue;
+            const origin = {x:npc.x,y:npc.y};
+            let placed = false;
+            for (let r=0.5; r<=8 && !placed; r+=0.5) {
+                for (let i=0; i<16; i++) {
+                    const x=origin.x+Math.cos(i*Math.PI/8)*r;
+                    const y=origin.y+Math.sin(i*Math.PI/8)*r;
+                    if (Math.hypot(x-hubX,y-hubY)>=HUB_SAFE_RADIUS-1) continue;
+                    if (isBlockedAt(x,y) || !placementClear(x,y,this.structures,0.3)) continue;
+                    npc.x=x; npc.y=y; placed=true; break;
                 }
             }
-            return !this.structures.some(s => item.x + radius > s.x - 0.5 &&
-                item.x - radius < s.x + s.w + 0.5 && item.y + radius > s.y - 0.5 &&
-                item.y - radius < s.y + s.h + 0.5);
-        };
-        this.props = this.props.filter(p => clearScenery(p, p.collisionRadius ?? 0.6 * (p.scale || 1)));
-        this.trees = this.trees.filter(t => clearScenery(t, t.collisionRadius ?? 0.6 * (t.height || 1)));
+        }
 
         // ── PERSISTENT FOG — Atmospheric ground haze ──
         for (let i = 0; i < 50; i++) {
@@ -4160,6 +4572,7 @@ const player = {
     y: WORLD_SIZE / 2 + 2,
     vx: 0, vy: 0,
     speed: 3.5,
+    _alizaMotion: createAlizaMotion(),
     health: 100,
     maxHealth: 100,
     stamina: 100,
@@ -4286,7 +4699,7 @@ const player = {
         shadow: 0,
     },
     
-    update(dt) {
+    update(dt, movementDt=dt) {
         // Commit layer: executes queued skills with Greyline-shaped windup/recover
         this._updateSkillCommit(dt);
 
@@ -4336,12 +4749,12 @@ const player = {
         }
         
         // Invuln timer
-        this.invulnTimer = Math.max(0, this.invulnTimer - dt);
+        this.invulnTimer = Math.max(0, this.invulnTimer - (this.dashTimer > 0 ? movementDt : dt));
         // Melee attack cooldown (was missing) — decrement per-frame so player can attack again
         this.attackCooldown = Math.max(0, this.attackCooldown - dt);
         // Gun timers
         this.gunCooldown = Math.max(0, this.gunCooldown - dt);
-        // Temporary timer used to show gun-attack test sprites (decrements here)
+        // Recoil and recovery run on the same clock as the weapon.
         this._gunSpriteTimer = Math.max(0, (this._gunSpriteTimer || 0) - dt);
         if (this.reloading) {
             this.reloadTimer -= dt * (greyline.knobs?.timeScale ?? 1.0); // time perception tint
@@ -4379,21 +4792,18 @@ const player = {
         
         // ── PREDATORY MOTION (Dash) ──
         if (this.dashTimer > 0) {
-            this.dashTimer -= dt;
-            // Speed modified by agency and greyline state
-            let dashSpeed = 12 * agencyMod;
-            const side = greyline.getSide();
-            if (side === 'restraint') {
-                dashSpeed *= 0.7; // Cautious short hop
-            } else if (side === 'compulsion') {
-                dashSpeed *= 1.3; // Overcommit lunge
-            }
-            
-            this.x += this.dashDirX * dashSpeed * dt;
-            this.y += this.dashDirY * dashSpeed * dt;
-            
+            const step = dashFrame({
+                x:this.x, y:this.y, dirX:this.dashDirX, dirY:this.dashDirY,
+                remaining:this.dashTimer, dt:movementDt, side:this.dashSide, agency:agencyMod,
+                isBlocked:(x,y)=>x<2 || y<2 || x>WORLD_SIZE-2 || y>WORLD_SIZE-2 || isBlockedAt(x,y),
+            });
+            const moved = step.x !== this.x || step.y !== this.y;
+            this.x = step.x;
+            this.y = step.y;
+            this.dashTimer = step.remaining;
+
             // Deal bleed damage to enemies passed through
-            for (const enemy of adaptiveArray(enemies)) {
+            for (const enemy of moved ? adaptiveArray(enemies) : []) {
                 if (enemy.dead || enemy._dashHit) continue;
                 const dx = enemy.x - this.x;
                 const dy = enemy.y - this.y;
@@ -4562,22 +4972,6 @@ const player = {
             let mx = 0, my = 0;
             const side = greyline.getSide();
             
-            // Agency shapes how inputs feel
-            let inputMod = 1.0;
-            if (side === 'restraint') {
-                // Heavy, delayed — but precise
-                inputMod = 0.55 + agencyMod * 0.45;
-            } else if (side === 'compulsion') {
-                // Twitchy, over-responsive
-                inputMod = 0.95 + (1 - agencyMod) * 0.35;
-                // Micro-jitter at high compulsion
-                if (greyline.getExtremity() > 0.4) {
-                    // Remove direct input jitter to avoid involuntary movement.
-                    // Provide non-physical feedback via camera shake instead.
-                    try { camera.addShake(1.2 * greyline.getExtremity()); } catch (e) { /* ignore */ }
-                }
-            }
-            
             // Isometric-corrected controls:
             // W = screen up = world NW (-x, -y), S = screen down = world SE (+x, +y)
             // A = screen left = world SW (-x, +y), D = screen right = world NE (+x, -y)
@@ -4604,9 +4998,11 @@ const player = {
                     my += Math.cos(gameTime * 13.1) * jit * 0.05;
                 }
 
-                const ts = (greyline.knobs?.timeScale ?? 1.0);
-                this.vx = mx * this.speed * inputMod * ts;
-                this.vy = my * this.speed * inputMod * ts;
+                // Perception can accelerate; physical movement uses wall-clock time.
+                const speed = this.speed * (input.keys.shift ? 0.48 : 1);
+                const velocity = walkVelocity(mx,my,speed,side,agencyMod);
+                this.vx = velocity.x;
+                this.vy = velocity.y;
                 this.state = 'moving';
                 this.facing = mx >= 0 ? 1 : -1;
                 this.inactivityTimer = 0;
@@ -4623,7 +5019,7 @@ const player = {
                 
                 // Footstep SFX — timed to movement speed
                 this._footTimer = (this._footTimer || 0) + dt * (greyline.knobs?.timeScale ?? 1.0);
-                const footInterval = greyline.getSide() === 'compulsion' ? 0.25 : greyline.getSide() === 'restraint' ? 0.45 : 0.35;
+                const footInterval = input.keys.shift ? 0.55 : side === 'compulsion' ? 0.25 : side === 'restraint' ? 0.45 : 0.35;
                 if (this._footTimer >= footInterval) {
                     this._footTimer = 0;
                     if (audioEngine) audioEngine.playFootstep();
@@ -4640,9 +5036,9 @@ const player = {
             
             // Move with per-axis collision resolution so the player slides along obstacles
             const _prevX = this.x, _prevY = this.y;
-            this.x += this.vx * dt;
+            this.x += this.vx * movementDt;
             if (isBlockedAt(this.x, this.y)) this.x = _prevX;
-            this.y += this.vy * dt;
+            this.y += this.vy * movementDt;
             if (isBlockedAt(this.x, this.y)) this.y = _prevY;
         }
         
@@ -4658,7 +5054,10 @@ const player = {
         const dyC = this.y - WORLD_SIZE/2;
         const distSqC = dxC * dxC + dyC * dyC;
         const hazeThreshold = 30;
-        if (distSqC > hazeThreshold * hazeThreshold) {
+        const block=suburbReview?.area;
+        const onFringe=block && this.x>=block.minX && this.x<=block.maxX &&
+            this.y>=block.minY && this.y<=block.maxY;
+        if (!onFringe && distSqC > hazeThreshold * hazeThreshold) {
             const distFromCenter = Math.sqrt(distSqC);
             const hazeDmg = (distFromCenter - hazeThreshold) * 2 * dt;
             this.health -= hazeDmg;
@@ -4685,25 +5084,22 @@ const player = {
         
         let dx = 0, dy = 0;
         // Isometric-corrected dash direction
-        if (input.keys['w']) { dx -= 1; dy -= 1; }
-        if (input.keys['s']) { dx += 1; dy += 1; }
-        if (input.keys['a']) { dx -= 1; dy += 1; }
-        if (input.keys['d']) { dx += 1; dy -= 1; }
-        if (dx === 0 && dy === 0) dx = this.facing;
+        if (input.keys['w'] || input.keys['arrowup']) { dx -= 1; dy -= 1; }
+        if (input.keys['s'] || input.keys['arrowdown']) { dx += 1; dy += 1; }
+        if (input.keys['a'] || input.keys['arrowleft']) { dx -= 1; dy += 1; }
+        if (input.keys['d'] || input.keys['arrowright']) { dx += 1; dy -= 1; }
+        if (dx === 0 && dy === 0) [dx, dy] = alizaWorldDirection(this._alizaMotion.direction);
         
         const len = Math.sqrt(dx * dx + dy * dy);
         this.dashDirX = dx / len;
         this.dashDirY = dy / len;
         
-        // Duration varies by Greyline state
-        if (side === 'restraint') {
-            this.dashTimer = 0.12 * durM; // Short cautious hop
-        } else if (side === 'compulsion') {
-            this.dashTimer = 0.3 * durM;  // Overcommit lunge (risky)
-        } else {
-            this.dashTimer = 0.2 * durM;  // Fluid dash, clean exit
-        }
-        
+        this.dashSide = side;
+        this.dashTimer = dashDuration(side,durM);
+        this._alizaDashDuration = this.dashTimer;
+        this._alizaMotion.direction = alizaDirection(dx, dy, this._alizaMotion.direction);
+        this._gunSpriteTimer = 0;
+
         this.state = 'dashing';
         this.invulnTimer = this.dashTimer + 0.05;
         this.cooldowns.predatory = (1.2 - psychStats.adaptability.value * 0.3) / cdEff;
@@ -5305,6 +5701,10 @@ const player = {
         
         this.state = 'attacking';
         this.attackTimer = 0.25 / (precisionMod * 0.7 + 0.3);
+        this._alizaKnifeDuration = this.attackTimer;
+        this._alizaKnifeDirection = alizaDirection(adx, ady, this._alizaMotion.direction);
+        this._alizaMotion.direction = this._alizaKnifeDirection;
+        this._gunSpriteTimer = 0;
         // Stronger left-click cooldown to reduce spammability
         this.attackCooldown = 0.22;
         this.stamina -= 8 * (greyline.knobs?.eco?.stamDrain ?? 1.0);
@@ -5330,7 +5730,7 @@ const player = {
         }
         
         // ── DAMAGE CALCULATION ──
-        let baseDmg = 12 + this.comboCount * 2;
+        let baseDmg = (12 + this.comboCount * 2) * BASIC_WEAPON_PACE;
         
         // Equipment damage multiplier
         baseDmg *= equipBonuses.damage;
@@ -5367,8 +5767,8 @@ const player = {
                 const angleToEnemy = Math.atan2(dy, dx);
                 let angleDiff = Math.abs(angleToEnemy - this.attackAngle);
                 if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
-                if (angleDiff < Math.PI * 0.55 || dist < 1.0) {
-                    enemy.takeDamage(baseDmg, this.x, this.y);
+                if (angleDiff < Math.PI * 0.55 || distSq < 1.0) {
+                    enemy.takeDamage(baseDmg, this.x, this.y, 'stab');
                     hitSomething = true;
                     camera.addShake(isCrit ? 5 : 3);
                     
@@ -5454,7 +5854,7 @@ const player = {
         const ang = Math.atan2(dy, dx) + (Math.random() - 0.5) * spread;
 
         const speed = 13;
-        const dmgBase = 6.0 * equipBonuses.damage;
+        const dmgBase = 6.0 * equipBonuses.damage * BASIC_WEAPON_PACE;
         const critChance = (psychStats.precision.value * 0.18) * (greyline.isBalanced() ? 1.25 : 0.8);
         const isCrit = Math.random() < critChance;
         const dmg = dmgBase * (isCrit ? 1.55 : 1.0);
@@ -5485,13 +5885,13 @@ const player = {
         this.actionCount++;
 
         // SFX — make sure audio engine has been created & unlocked
-        if (!audioEngine) {
-            try { initTitleMusic(); } catch(e) { console.warn('[Audio] initTitleMusic failed during shoot', e); }
-        }
+        if (!audioEngine) initAudio();
         ensureAudioUnlocked();
         if (audioEngine) audioEngine.playGunShot(wR, a);
-        // Show the gun-attack test sprite briefly (if present)
-        this._gunSpriteTimer = 0.18;
+        this._alizaGunDirection = alizaDirection(dx, dy, this._alizaMotion.direction);
+        this._alizaMotion.direction = this._alizaGunDirection;
+        this._alizaKnifeDuration = 0;
+        this._gunSpriteTimer = ALIZA_GUN_DURATION;
 
         // Drift hook: sustained shooting nudges restraint (avoid pure kiting loops)
         greyline.push(+1, 0.0035 + wR * 0.0025);
@@ -5585,9 +5985,6 @@ class Enemy {
         this.facingDir = 2;     // 8-direction: 0=N,1=NE,2=E,3=SE,4=S,5=SW,6=W,7=NW
         this.moveAngle = 0;     // raw movement angle
         this.bobPhase = Math.random() * Math.PI * 2;
-        this.stridePhase = this.bobPhase;
-        this.motion = 0;
-        this.lastAttackAt = -Infinity;
         this.knockbackX = 0;
         this.knockbackY = 0;
         this.patternPhase = 0;
@@ -5722,7 +6119,6 @@ getAttackCDMod() {
     return (1.0 + delay * 0.35) * (1.0 - Math.min(0.30, swarm * 0.12));
 }
 setAttackCooldown(baseSeconds) {
-    this.lastAttackAt = TIME.elapsed;
     this.attackCooldown = Math.max(0.05, baseSeconds * this.getAttackCDMod());
 }
 shouldFeint() {
@@ -5762,9 +6158,7 @@ update(dt) {
             return;
         }
         
-        const previousX = this.x, previousY = this.y;
         this.bobPhase += dt * 2;
-        this.motion *= Math.exp(-dt * 12);
         this.stateTimer += dt;
         this.attackCooldown = Math.max(0, this.attackCooldown - dt);
         this.stunTimer = Math.max(0, this.stunTimer - dt);
@@ -5773,11 +6167,10 @@ update(dt) {
         if (this.stunTimer > 0) return;
 
 
-// Greyline AI knobs snapshot for this frame
-this._ai = (greyline.knobs && greyline.knobs.ai) ? greyline.knobs.ai : {};
-// store squared player velocity magnitude to avoid repeated sqrt calls in each enemy update
-this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
-        
+        // Each enemy reads the same Greyline inputs without mutating the shared board.
+        this._ai = {...greyline.knobs?.ai};
+        this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
+
         // Knockback
         this.x += this.knockbackX * dt;
         this.y += this.knockbackY * dt;
@@ -5789,84 +6182,15 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
         const distSq = dx * dx + dy * dy;
         const dist = Math.sqrt(distSq); // use squared distance for comparisons, but still need actual distance later
 
-        let speedMod = this.snaredSlowTimer > 0 ? 0.3 : 1.0;
-
-        // Under heavy restraint, force enemies to chase the player relentlessly
-        try {
-            if (!this.isBoss && this.type !== 'deferred' && greyline.getSide() === 'restraint' && greyline.getExtremity() > 0.7) {
-                this.state = 'approaching';
-                // also bump speed so they actually close
-                speedMod *= 1.5;
-            }
-        } catch(e) {}
-
-        // create snapshot of player mindstate for AI
-        let snap = { value: 0.5, trend: 0, awareness: psychStats.awareness.value, agency: psychStats.agency.value };
-        try {
-            snap.value = greyline.value;
-            snap.trend = greyline.value - (this._lastGreyline||greyline.value);
-            this._lastGreyline = greyline.value;
-            // speed boost spike based on snapshot when chasing and side is compulsion/restraint
-            try {
-                const side = greyline.getSide();
-                if ((side === 'restraint' || side === 'compulsion') && this.state === 'chasing') {
-                    const spike = 1 - snap.value * 0.7 - 0.3; // formula from design
-                    if (spike > 0) {
-                        let boost = 1 + spike * 0.4;
-                        if (side === 'compulsion') boost += 0.2; // extra burst on right-side
-                        speedMod *= boost;
-                    }
-                }
-            } catch(e) {}
-            // apply snapshot modifications to AI knobs
-            if (snap.value < 0.3) {
-                this._ai.delay = Math.max(this._ai.delay||0, 0.3);
-                this._ai.punishStatic = Math.max(this._ai.punishStatic||0, 0.3);
-                this._ai.aggro = (this._ai.aggro||1) * 0.9;
-            } else if (snap.value > 0.7) {
-                this._ai.feint = Math.max(this._ai.feint||0, 0.4);
-                this._ai.swarm = Math.max(this._ai.swarm||0, 0.6);
-                this._ai.punishOver = Math.max(this._ai.punishOver||0, 0.5);
-            } else {
-                this._ai.readable = Math.min(1.0, (this._ai.readable||0) + 0.2);
-            }
-            // boss phase harmony
-            if (this.type === 'hollow_warden') {
-                if (snap.value < 0.3) this.bossPhase = 0;
-                else if (snap.value > 0.7) this.bossPhase = 1;
-                else this.bossPhase = 2;
-            }
-        } catch(e) {}
-
-        // Emergency proximity override: if enemy is effectively on top of player, ensure it can damage.
-        if (dist < 0.9 && this.attackCooldown <= 0 && !this.isBoss && this.type !== 'deferred') {
-            try {
-                player.takeDamage(this.damage);
-            } catch (e) {}
-            this.setAttackCooldown(this.attackRate * 0.6);
-            // Short-circuit heavy AI for immediate contact
+        // The Warden has no dedicated handler yet. Keep its existing contact
+        // fallback local to that boss; regular enemies own their attack tells.
+        if (this.type === 'hollow_warden' && dist < .9 && this.attackCooldown <= 0 &&
+            !isOccludedBetween(this.x,this.y,player.x,player.y)) {
+            player.takeDamage(this.damage);
+            this.setAttackCooldown(this.attackRate*.6);
             return;
         }
 
-        // LOS occlusion timer (blocked LOS behind large props/trees nudges enemy disengage)
-        this._losBlockedTimer = this._losBlockedTimer || 0;
-        const losBlocked = isOccludedBetween(this.x, this.y, player.x, player.y);
-        if (losBlocked && dist < Math.max(6, this.getAggroRange())) {
-            this._losBlockedTimer = Math.min(5, this._losBlockedTimer + dt);
-        } else {
-            this._losBlockedTimer = Math.max(0, this._losBlockedTimer - dt * 1.5);
-        }
-        if (this._losBlockedTimer > 2.0 && !this.isBoss && this.type !== 'deferred') {
-            // begin subtle disengage
-            if (this.state !== 'retreating' && this.state !== 'disengaging') {
-                this.state = 'hesitating';
-                this.stateTimer = 0;
-                particles.push({ x: this.x, y: this.y, vx: 0, vy: -0.4, type: 'disengage_wisp', timer: 0.9, size: 2 });
-            }
-            greyline.push(-1, 0.003 * dt);
-            if (this.harassCount > 0) this.harassCount = Math.max(0, this.harassCount - dt * 0.4);
-        }
-        
         if (dx !== 0 || dy !== 0) {
             this.facing = dx > 0 ? 1 : -1;
             this.moveAngle = Math.atan2(dy, dx);
@@ -5889,15 +6213,26 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
         }
         
         // Type-specific AI
+        const speedMod = this.snaredSlowTimer > 0 ? 0.3 : 1.0;
+
         switch (this.type) {
-            case 'lingering':
+            case 'lingering': {
+                const startX = this.x, startY = this.y;
                 this.aiLingering(dt, dx, dy, dist, speedMod);
+                const stepX = this.x - startX, stepY = this.y - startY;
+                if (this.state === 'approaching' || this.state === 'retreating' || this.state === 'idle') {
+                    const moved = Math.hypot(stepX, stepY);
+                    this.strideDistance = ((this.strideDistance ?? 0) + moved) % .6;
+                    if (Math.abs(stepX - stepY) > .0005) this.walkScreenSide = Math.sign(stepX - stepY);
+                }
                 break;
+            }
             case 'watchful':
                 this.aiWatchful(dt, dx, dy, dist);
                 break;
             case 'huddled':
-                this.aiHuddled(dt, dx, dy, dist, speedMod);
+                if (this.civicHuddle) this.updateCivicHuddle(dt, dx, dy, dist, speedMod);
+                else this.aiHuddled(dt, dx, dy, dist, speedMod);
                 break;
             case 'rehearsed':
                 this.aiRehearsed(dt, dx, dy, dist, speedMod);
@@ -5914,46 +6249,22 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
             case 'remembered':
                 this.aiRemembered(dt, dx, dy, dist, speedMod);
                 break;
-            case 'hollow_warden':
-                this.aiWarden(dt, dx, dy, dist, speedMod);
-                break;
         }
         
         // Clamp
         this.x = Math.max(2, Math.min(WORLD_SIZE - 2, this.x));
         this.y = Math.max(2, Math.min(WORLD_SIZE - 2, this.y));
-        const distanceMoved = Math.hypot(this.x - previousX, this.y - previousY);
-        this.motion = Math.max(this.motion, Math.min(1, distanceMoved / Math.max(dt, 0.001)));
-        this.stridePhase = (this.stridePhase + distanceMoved * 7) % (Math.PI * 2);
     }
 
-    aiWarden(dt, dx, dy, dist, speedMod) {
-        if (this.state === 'windup') {
-            if (this.stateTimer < 0.75) return;
-            this.state = 'slam';
-            this.stateTimer = 0;
-            if (dist <= this.attackRange && !isOccludedBetween(this.x, this.y, player.x, player.y)) {
-                player.takeDamage(this.damage);
-            }
-            camera.addShake(5);
-            this.setAttackCooldown(this.attackRate);
-            return;
-        }
-        if (this.state === 'slam' && this.stateTimer < 0.45) return;
-        if (dist > this.aggroRange) {
-            this.state = 'idle';
-        } else if (dist <= this.attackRange && this.attackCooldown <= 0) {
-            this.state = 'windup';
-            this.stateTimer = 0;
-        } else if (dist > this.attackRange * 0.8) {
-            this.state = 'approaching';
-            const step = this.speed * speedMod * dt / dist;
-            const x = this.x + dx * step, y = this.y + dy * step;
-            if (!isBlockedAt(x, this.y)) this.x = x;
-            if (!isBlockedAt(this.x, y)) this.y = y;
-        } else {
-            this.state = 'idle';
-        }
+    beginLingeringStrike(dx, dy, dist, cornered) {
+        this.strikeCornered = cornered;
+        this.strikeReturnAge = this.stateTimer;
+        this.strikeDuration = lingeringWindup(cornered, greyline.g ?? 0);
+        this.strikeAimX = dx / (dist || 1);
+        this.strikeAimY = dy / (dist || 1);
+        this.strikeScreenSide = Math.sign(dx - dy) || this.facing;
+        this.state = 'strike_windup';
+        this.stateTimer = 0;
     }
 
     aiLingering(dt, dx, dy, dist, speedMod) {
@@ -5983,6 +6294,31 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
         const nearEdge = this.x < 8 || this.x > WORLD_SIZE - 8 || this.y < 8 || this.y > WORLD_SIZE - 8;
         const playerClose = dist < 3;
         this.cornered = nearEdge && playerClose;
+
+        if (this.state === 'strike_windup') {
+            if (this.stunTimer > 0 || this.stateTimer < this.strikeDuration) return;
+            const withinArc = dist < .12 || (dx * this.strikeAimX + dy * this.strikeAimY) > dist * .38;
+            if (withinArc && dist < this.getAttackRange() + .5 &&
+                clearLingeringStrike(this.x,this.y,dx,dy,isBlockedAt)) {
+                player.takeDamage(this.damage + (this.strikeCornered ? this.frustration * 1.5 : 0));
+            }
+            if (this.strikeCornered) {
+                this.frustration = Math.max(0, this.frustration - 3);
+                camera.addShake(4);
+            }
+            this.setAttackCooldown(this.attackRate * (this.strikeCornered ? .4 : 1));
+            this.state = 'strike_recover';
+            this.stateTimer = 0;
+            return;
+        }
+        if (this.state === 'strike_recover') {
+            if (this.stateTimer < .26) return;
+            const resumeLashing = this.strikeCornered && this.cornered;
+            this.state = resumeLashing ? 'cornered_lashing' : 'retreating';
+            this.stateTimer = resumeLashing ? this.strikeReturnAge + this.strikeDuration + .26 : 0;
+            this.retreatDir = {x:-this.strikeAimX,y:-this.strikeAimY};
+            return;
+        }
         
         // === STATE: CORNERED ===
         // When cornered, all that stored avoidance erupts
@@ -5993,27 +6329,9 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
                 this.retreatDir = { x: -dx / (dist || 1), y: -dy / (dist || 1) };
                 return;
             }
-            // Frantic, wild attacks — faster and harder than normal
             if (dist < this.getAttackRange() * 1.3 && this.attackCooldown <= 0) {
-                const storedDmg = this.damage + this.frustration * 1.5;
-                if (dist < this.getAttackRange() + 0.5) {
-                    player.takeDamage(storedDmg);
-                }
-                this.setAttackCooldown(this.attackRate * 0.4); // much faster
-                this.frustration = Math.max(0, this.frustration - 3);
-                camera.addShake(4);
-                
-                // Panic particles
-                for (let i = 0; i < 3; i++) {
-                    particles.push({
-                        x: this.x, y: this.y,
-                        vx: (Math.random() - 0.5) * 4,
-                        vy: (Math.random() - 0.5) * 4,
-                        type: 'linger_panic',
-                        timer: 0.4 + Math.random() * 0.3,
-                        size: 2 + Math.random() * 2
-                    });
-                }
+                this.beginLingeringStrike(dx, dy, dist, true);
+                return;
             }
             // Jittering movement — can't stay still
             this.x += (Math.random() - 0.5) * 1.5 * dt;
@@ -6113,12 +6431,7 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
                 
                 // Actually commits to attack (rare, grows rarer)
                 if (dist < this.getAttackRange() && this.attackCooldown <= 0) {
-                    // Attack is weak and apologetic — unless frustration is high
-                    this.performAttack();
-                    // Immediately retreat after attacking
-                    this.state = 'retreating';
-                    this.stateTimer = 0;
-                    this.retreatDir = { x: -dx / (dist || 1), y: -dy / (dist || 1) };
+                    this.beginLingeringStrike(dx, dy, dist, false);
                 }
             } else {
                 this.state = 'idle';
@@ -6222,6 +6535,7 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
                     const vx = (finalDx / finalDist) * cos - (finalDy / finalDist) * sin;
                     const vy = (finalDx / finalDist) * sin + (finalDy / finalDist) * cos;
                     const projSpeed = 5.0 + this.vigilanceStacks * 0.2;
+                    this.fringeShotAt = TIME.elapsed;
                     particles.push({ x: this.x, y: this.y, vx: vx * projSpeed, vy: vy * projSpeed, type: 'watchful_bolt', timer: 2.5, damage: this.damage + this.vigilanceStacks * 2, hitRadius: 0.6, sourceId: this.x + this.y * 1000 });
                 } catch (e) { /* defensive */ }
             }
@@ -6260,6 +6574,7 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
                 const vy = (finalDx / finalDist) * sin + (finalDy / finalDist) * cos;
                 
                 const projSpeed = 5.5 + this.vigilanceStacks * 0.3;
+                this.fringeShotAt = TIME.elapsed;
                 
                 particles.push({
                     x: this.x, y: this.y,
@@ -6294,7 +6609,7 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
                 const ai = this.getAI();
                 let warn = 0.6 - Math.min(0.25, this.vigilanceStacks * 0.05);
                 warn *= (1.0 + (ai.delay ?? 0) * 0.55);
-                this.warningTimer = warn;
+                this.warningTimer = this.warningDuration = warn;
                 this._feintPending = this.shouldFeint();
                 this.setAttackCooldown(this.attackRate - Math.min(0.6, this.vigilanceStacks * 0.12));
             }
@@ -6305,6 +6620,34 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
         }
     }
     
+    updateCivicHuddle(dt, dx, dy, dist, speedMod) {
+        const huddle = this.civicHuddle;
+        huddle.moving = false;
+        if (huddle.attack > 0) {
+            huddle.attack -= dt;
+            if (huddle.attack <= 0) {
+                if (dist < huddle.reach && civicStrikeClear(this.x,this.y,player.x,player.y,isBlockedAt)) {
+                    player.takeDamage(this.damage, 'Huddled');
+                }
+                huddle.recover = .28;
+                this.setAttackCooldown(this.attackRate);
+            }
+            return;
+        }
+        if (huddle.recover > 0) {
+            huddle.recover -= dt;
+            return;
+        }
+        huddle.form = samsarraEnemyForm(samsarraEvent.snapshot);
+        const x = this.x, y = this.y;
+        this.aiHuddled(dt, dx, dy, dist, speedMod);
+        if (isBlockedAt(this.x,y)) this.x = x;
+        if (isBlockedAt(this.x,this.y)) this.y = y;
+        const moved = Math.hypot(this.x-x,this.y-y);
+        huddle.moving = moved > .0001;
+        huddle.stride = (huddle.stride + moved) % .7;
+    }
+
     aiHuddled(dt, dx, dy, dist, speedMod) {
         // CODEPENDENCY AS SAFETY.
         // The Huddled are a collective that can't function apart. In groups, they're coordinated and
@@ -6400,7 +6743,14 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
                 
                 // Attack — grief makes them reckless
                 if (dist < this.getAttackRange() + this.griefStacks * 0.3 && this.attackCooldown <= 0) {
-                    this.performAttack();
+                    if (this.civicHuddle) {
+                        if (civicStrikeClear(this.x,this.y,player.x,player.y,isBlockedAt)) {
+                            this.civicHuddle.attack = this.civicHuddle.windup =
+                                ({restraint:.53,compulsion:.33}[this.civicHuddle.form] ?? .42);
+                            this.civicHuddle.reach = this.getAttackRange() + this.griefStacks * .3 + .35;
+                            this.civicHuddle.side = Math.sign(dx-dy) || 1;
+                        }
+                    } else this.performAttack();
                     if (this.griefStacks > 2) {
                         camera.addShake(3);
                     }
@@ -6582,7 +6932,13 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
         // Speed up slightly with each successful cycle — building to overconfidence
         const cycleSpeed = 1 + this.cycleCount * 0.08;
         const cycleDuration = 4 / cycleSpeed;
-        const phase = (this.patternPhase % cycleDuration) / cycleDuration; // 0→1
+        const cycle = Math.floor(this.patternPhase / cycleDuration);
+        if (this._tellCycle !== cycle) {
+            this._tellCycle = cycle;
+            this._tellScale = enemyTellScale('rehearsed',greyline.getSide(),greyline.getExtremity());
+        }
+        const phase = (this.patternPhase % cycleDuration) / cycleDuration;
+        const tellOffset = .10 * (this._tellScale - 1);
         
         // Pattern degrades — phases blur together, timing drifts
         const drift = (1 - this.patternIntegrity) * 0.15;
@@ -6605,17 +6961,17 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
                 });
             }
             
-        } else if (phase < 0.45 + drift) {
+        } else if (phase < 0.45 + drift + tellOffset) {
             // PHASE 2: Telegraph — stops, squares up, brief window to dodge
-            this.state = 'pattern_telegraph';
-            // Lock onto position — this is where the lunge will aim
-            if (phase < 0.36 + drift) {
+            // Lock onto the player when the tell begins, not on subsequent frames.
+            if (this.state !== 'pattern_telegraph') {
                 this.lungeTargetX = player.x;
                 this.lungeTargetY = player.y;
             }
+            this.state = 'pattern_telegraph';
             // Visual: tense stillness, maybe a glint
             
-        } else if (phase < 0.6) {
+        } else if (phase < 0.6 + tellOffset) {
             // PHASE 3: Lunge — committed dash to where player WAS
             this.state = 'pattern_lunge';
             const ltx = this.lungeTargetX - this.x;
@@ -7081,14 +7437,15 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
         }
         
         // === ERUPTION TRIGGER — proximity threshold ===
-        if (this.state !== 'triggered' && !this.isErupting && !this.isSpent && dist < this.getAggroRange()) {
+        if (!this.isErupting && !this.isSpent && this.state !== 'triggered' && dist < this.getAggroRange()) {
+            this._eruptionTell = .4 * enemyTellScale('deferred',greyline.getSide(),greyline.getExtremity());
             this.state = 'triggered';
             this.stateTimer = 0;
         }
         
         if (this.state === 'triggered' && !this.isErupting && !this.isSpent) {
             // Brief unfold / warning
-            if (this.stateTimer < 0.4) {
+            if (this.stateTimer < (this._eruptionTell ?? .4)) {
                 // Unfolding — the cost revealing its true size
                 // Tremor intensifies
                 this.trembleIntensity = Math.min(1, this.trembleIntensity + dt * 3);
@@ -7466,7 +7823,8 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
         this.setAttackCooldown(this.attackRate);
     }
     
-    takeDamage(amount, fromX, fromY) {
+    takeDamage(amount, fromX, fromY, weapon) {
+        if (this.dead) return;
         const dx = this.x - fromX;
         const dy = this.y - fromY;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -7509,7 +7867,7 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
             }
             
             // Low health — final desperate approach
-            if (this.health - finalDmg < this.maxHealth * 0.25 && this.health >= this.maxHealth * 0.25) {
+            if (this.health - basicHitDamage(finalDmg,this.maxHealth,weapon) < this.maxHealth * 0.25 && this.health >= this.maxHealth * 0.25) {
                 this.frustration = 10;
                 this.retreatCount = 0; // stops retreating — no more running
             }
@@ -7717,7 +8075,7 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
             }
             
             // Low health — the echo panics, tries to dash away like the player would
-            if (this.health - finalDmg < this.maxHealth * 0.3 && this.health >= this.maxHealth * 0.3) {
+            if (this.health - basicHitDamage(finalDmg,this.maxHealth,weapon) < this.maxHealth * 0.3 && this.health >= this.maxHealth * 0.3) {
                 this.echoDashTimer = 0.2;
                 this.echoDashDir = { x: dx / dist, y: dy / dist }; // dash AWAY from damage
                 this.mimicState = 'echo_dashing';
@@ -7766,10 +8124,10 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
             
             this.vigilanceStacks = Math.min(5, this.vigilanceStacks + 0.5);
             
-            if (this.health - finalDmg < this.maxHealth * 0.3 && this.health >= this.maxHealth * 0.3) {
+            if (this.health - basicHitDamage(finalDmg,this.maxHealth,weapon) < this.maxHealth * 0.3 && this.health >= this.maxHealth * 0.3) {
                 this.vigilanceStacks = 5;
                 this.state = 'warning';
-                this.warningTimer = 0.2;
+                this.warningTimer = this.warningDuration = 0.2;
                 this.attackCooldown = 0;
             }
         }
@@ -7801,7 +8159,7 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
                 }
             }
             
-            if (this.health - finalDmg < this.maxHealth * 0.35 && this.health >= this.maxHealth * 0.35) {
+            if (this.health - basicHitDamage(finalDmg,this.maxHealth,weapon) < this.maxHealth * 0.35 && this.health >= this.maxHealth * 0.35) {
                 this.speed *= 1.3;
                 this.attackRate *= 0.6;
                 this.damage += 3;
@@ -7826,7 +8184,7 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
             audioEngine.playEnemyHurt(this.type);
         }
         
-        this.health -= finalDmg;
+        this.health -= basicHitDamage(finalDmg,this.maxHealth,weapon);
         this.knockbackX += (dx / dist) * 3 * knockMult;
         this.knockbackY += (dy / dist) * 3 * knockMult;
         
@@ -7858,6 +8216,7 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
         // ── DEATH ──
         
         if (this.health <= 0) {
+            this.deathForm = this.civicHuddle?.form ?? samsarraEnemyForm(samsarraEvent.snapshot);
             this.dead = true;
             this.deathTimer = 0;
             player.burden = Math.max(0, player.burden - 2);
@@ -8206,63 +8565,35 @@ this._playerSpeedSq = player.vx * player.vx + player.vy * player.vy;
     }
 }
 
-function placeEnemy(type, originX, originY) {
-    const hub = WORLD_SIZE / 2;
-    const clearance = type === 'hollow_warden' ? 0.55 : 0.28;
-    const canSpawn = (x, y) => {
-        const distance = Math.hypot(x - hub, y - hub);
-        if (distance < HUB_SAFE_RADIUS + 2 || distance > 41 ||
-            world.tiles[Math.round(x)]?.[Math.round(y)]?.type === 'haze') return false;
-        if (Math.hypot(x - player.x, y - player.y) < 2.5) return false;
-        if (isBlockedAt(x, y) || isBlockedAt(x + clearance, y) || isBlockedAt(x - clearance, y) ||
-            isBlockedAt(x, y + clearance) || isBlockedAt(x, y - clearance)) return false;
-        return enemies.every(e => e.dead || Math.hypot(e.x - x, e.y - y) >= clearance + 0.35);
-    };
-    const spawnAt = (x, y) => {
-        const enemy = new Enemy(type, x, y);
-        enemies.push(enemy);
-        return enemy;
-    };
-    if (canSpawn(originX, originY)) return spawnAt(originX, originY);
-
-    // Try the closest positions first so packs keep their authored grouping.
-    for (let radius = 0.5; radius <= 9; radius += 0.5) {
-        for (let i = 0; i < 16; i++) {
-            const angle = i * Math.PI / 8;
-            const x = originX + Math.cos(angle) * radius;
-            const y = originY + Math.sin(angle) * radius;
-            if (canSpawn(x, y)) return spawnAt(x, y);
-        }
-    }
-    // A dense lot can exhaust the local search. Check the rest of the Verge.
-    const extent = 41;
-    for (let x = hub - extent; x <= hub + extent; x++) {
-        for (let y = hub - extent; y <= hub + extent; y++) {
-            if (canSpawn(x, y)) return spawnAt(x, y);
-        }
-    }
-    return null;
-}
-
 function spawnEnemies() {
-    enemies = bossEntity && !bossEntity.dead ? [bossEntity] : [];
+    enemies = [];
     const hubX = WORLD_SIZE / 2;
     const hubY = WORLD_SIZE / 2;
     
+    // Helper: ensure spawns are outside hub
     const minSpawnDist = HUB_SAFE_RADIUS + 2;
+    function safeSpawn(type, x, y) {
+        const d = Math.sqrt((x - hubX) ** 2 + (y - hubY) ** 2);
+        if (d < minSpawnDist) {
+            const a = Math.atan2(y - hubY, x - hubX);
+            x = hubX + Math.cos(a) * minSpawnDist;
+            y = hubY + Math.sin(a) * minSpawnDist;
+        }
+        enemies.push(new Enemy(type, x, y));
+    }
 
     // The Lingering — scattered across the verge
     for (let i = 0; i < 8; i++) {
         const angle = Math.random() * Math.PI * 2;
         const dist = minSpawnDist + Math.random() * 12;
-        placeEnemy('lingering', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist);
+        safeSpawn('lingering', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist);
     }
     
     // The Watchful — along fence lines and structures
     for (let i = 0; i < 4; i++) {
         const angle = (i / 4) * Math.PI * 2;
         const dist = minSpawnDist + 2 + Math.random() * 5;
-        placeEnemy('watchful', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist);
+        safeSpawn('watchful', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist);
     }
     
     // The Huddled — in groups
@@ -8272,7 +8603,7 @@ function spawnEnemies() {
         const gx = hubX + Math.cos(gAngle) * gDist;
         const gy = hubY + Math.sin(gAngle) * gDist;
         for (let i = 0; i < 4; i++) {
-            placeEnemy('huddled', gx + (Math.random() - 0.5) * 2, gy + (Math.random() - 0.5) * 2);
+            safeSpawn('huddled', gx + (Math.random() - 0.5) * 2, gy + (Math.random() - 0.5) * 2);
         }
     }
     
@@ -8280,32 +8611,46 @@ function spawnEnemies() {
     for (let i = 0; i < 6; i++) {
         const dAngle = Math.random() * Math.PI * 2;
         const dDist = minSpawnDist + 3 + Math.random() * 15;
-        placeEnemy('deferred', hubX + Math.cos(dAngle) * dDist, hubY + Math.sin(dAngle) * dDist);
+        safeSpawn('deferred', hubX + Math.cos(dAngle) * dDist, hubY + Math.sin(dAngle) * dDist);
     }
     
     // The Rehearsed — patrol paths
     for (let i = 0; i < 4; i++) {
         const angle = Math.random() * Math.PI * 2;
         const dist = 15 + Math.random() * 10;
-        placeEnemy('rehearsed', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist);
+        enemies.push(new Enemy('rehearsed', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist));
     }
     
     // The Burdened — rare, heavy
     for (let i = 0; i < 2; i++) {
         const angle = Math.random() * Math.PI * 2;
         const dist = 18 + Math.random() * 8;
-        placeEnemy('burdened', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist);
+        enemies.push(new Enemy('burdened', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist));
     }
     
     // The Drifting — harassment
     for (let i = 0; i < 5; i++) {
         const angle = Math.random() * Math.PI * 2;
         const dist = 8 + Math.random() * 18;
-        placeEnemy('drifting', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist);
+        enemies.push(new Enemy('drifting', hubX + Math.cos(angle) * dist, hubY + Math.sin(angle) * dist));
     }
     
     // The Remembered — rare
-    placeEnemy('remembered', hubX + 20, hubY - 15);
+    enemies.push(new Enemy('remembered', hubX + 20, hubY - 15));
+    enemies = enemies.filter(e => {
+        if (!isBlockedAt(e.x,e.y) && Math.hypot(e.x-hubX,e.y-hubY)>=minSpawnDist) return true;
+        const origin={x:e.x,y:e.y};
+        for (let r=0.5; r<=8; r+=0.5) {
+            for (let i=0; i<16; i++) {
+                const x=origin.x+Math.cos(i*Math.PI/8)*r;
+                const y=origin.y+Math.sin(i*Math.PI/8)*r;
+                if (x<1 || y<1 || x>WORLD_SIZE-1 || y>WORLD_SIZE-1) continue;
+                if (Math.hypot(x-hubX,y-hubY)<minSpawnDist || isBlockedAt(x,y)) continue;
+                e.x=x; e.y=y; return true;
+            }
+        }
+        return false;
+    });
 }
 
 // ============================================================
@@ -8335,7 +8680,7 @@ function updateParticles(dt) {
                 const dy = enemy.y - p.y;
                 const hitR = (p.hitRadius || 0.55) + (enemy.radius || 0.6);
                 if (dx*dx + dy*dy < hitR*hitR) {
-                    enemy.takeDamage(p.damage || 8, player.x, player.y);
+                    enemy.takeDamage(p.damage || 8, player.x, player.y, 'gun');
                     // Small impact burst
                     for (let i = 0; i < 3; i++) {
                         particles.push({
@@ -8828,6 +9173,7 @@ const TIME = { elapsed: 0, percept: 0 };
 let gameTime = 0; // used for jitter/noise phase
 // track last frame timestamp to detect slow render and skip expensive effects
 let lastFrameTime = 0;
+const drawGroundHaze = createHazeRenderer(() => document.createElement('canvas'));
 
 // globally available adaptive throttling for arrays
 function adaptiveArray(arr) {
@@ -8838,7 +9184,7 @@ function adaptiveArray(arr) {
     return arr;
 }
 
-// globally available throttling helper (used by renderAtmosphericFog and others)
+// globally available throttling helper for ambient particles
 function throttleArray(arr) {
     if (typeof window !== 'undefined' && window.frameLag > 24 && arr && arr.length > 20) {
         const q = window.perfQuality || 1;
@@ -8849,9 +9195,15 @@ function throttleArray(arr) {
 
 // support for hysteresis when deciding whether to skip tile rows
 // we keep skipping extremely rare to avoid visual glitches; only when perfQuality plunges
+let tileStep = 1;
 let _lastPerfQuality = 1;
 function updateTileStep(perfQuality) {
     // only skip if perfQuality is disastrous
+    if (tileStep === 1 && perfQuality < 0.2) {
+        tileStep = 2;
+    } else if (tileStep === 2 && perfQuality > 0.4) {
+        tileStep = 1;
+    }
     _lastPerfQuality = perfQuality;
 }
 
@@ -8891,16 +9243,53 @@ function render() {
     
     // Render world tiles
     renderTerrain(cam);
+    if (SUBURB_REVIEW && fringeArtKit.enabled) fringeArtKit.drawGroundDecals(ctx, world, cam, player, worldToScreen, samsarraEvent.snapshot);
+    const event = samsarraEvent.snapshot;
+    if (suburbReview) drawSuburbGround(ctx, suburbReview, worldToScreen, cam, loadedImages, event);
+    if (civicGround) drawCivicGround(ctx, civicGround, worldToScreen, cam, loadedImages, event,
+        {width:W/camera.zoom,height:H/camera.zoom});
+    for (const dressing of civicDressing) {
+        if (dressing.left+cam.x>W/camera.zoom || dressing.left+cam.x+600<0 ||
+            dressing.top+cam.y>H/camera.zoom || dressing.top+cam.y+340<0) continue;
+        drawFringeDressing(ctx, dressing, cam, event);
+    }
+    if (fringeDressing) drawFringeDressing(ctx, fringeDressing, cam, event);
+    const hazeG = greyline.g ?? 0;
+    const eventG = event.polarity === 'restraint' ? -1 : 1;
+    drawGroundHaze(ctx, {
+        view: { x: -cam.x, y: -cam.y, width: W / camera.zoom, height: H / camera.zoom },
+        pools: fringeHazePools ?? world.hazePools, drifts: world.fogParticles, project: worldToScreen,
+        time: TIME.percept, g: hazeG + (eventG - hazeG) * event.intensity,
+        tier: Math.max(greyline.samTier ?? 0, Math.floor(event.intensity * 3)),
+        inHub: isPlayerInHub(), density: (greyline.knobs?.env?.hazDensity ?? 1) + event.intensity * .4,
+    });
+
     
     // Collect all renderables and sort by Y for depth
     const renderables = [];
     
     // Structures
     for (const s of world.structures) {
-        const pos = worldToScreen(s.x + s.w / 2, s.y + s.h / 2);
+        const anchor = structureAnchor(s);
+        const pos = worldToScreen(anchor.x, anchor.y);
         renderables.push({ type: 'structure', data: s, y: pos.y, pos });
     }
     
+    if (suburbReview) {
+        const { x, y } = suburbReview.mailbox;
+        const pos = worldToScreen(x, y);
+        renderables.push({ type: 'fringe_mailbox', y: pos.y, pos });
+    }
+    if (fringeDressing && fringeCraftArt.streetlamp) {
+        const {x,y} = fringeDressing.lamp;
+        const pos = worldToScreen(x,y);
+        renderables.push({ type: 'fringe_lamp', y: pos.y, pos });
+    }
+
+    if (civicGround) for (const sign of civicSigns) {
+        const pos=worldToScreen(sign.x,sign.y);
+        renderables.push({type:'civic_sign',data:sign,y:pos.y,pos});
+    }
     // Fence posts
     for (const f of world.fencePosts) {
         const pos = worldToScreen(f.x, f.y);
@@ -8994,10 +9383,13 @@ function render() {
         const sy = r.pos.y + cam.y;
         
         switch (r.type) {
-            case 'structure': drawStructure(ctx, sx, sy, r.data); break;
-            case 'fence': drawFence(ctx, sx, sy, r.data); break;
-            case 'tree': drawTree(ctx, sx, sy, r.data); break;
-            case 'prop': drawProp(ctx, sx, sy, r.data); break;
+            case 'civic_sign': drawCivicSign(ctx, sx, sy, r.data, event); break;
+            case 'fringe_lamp': drawFringeLamp(ctx, fringeCraftArt.streetlamp, sx, sy, event); break;
+            case 'structure': if (!(SUBURB_REVIEW && fringeArtKit.drawBuilding(ctx, sx, sy, r.data, event))) drawStructure(ctx, sx, sy, r.data); break;
+            case 'fence': if (!(SUBURB_REVIEW && fringeArtKit.drawProp(ctx, 'fence', sx, sy, r.data))) drawFence(ctx, sx, sy, r.data); break;
+            case 'fringe_mailbox': if (!fringeArtKit.drawProp(ctx, 'fringe_mailbox', sx, sy)) drawFringeMailbox(ctx, sx, sy, event); break;
+            case 'tree': if (!(SUBURB_REVIEW && r.data.bare && fringeArtKit.drawProp(ctx, 'bare_tree', sx, sy, r.data))) drawTree(ctx, sx, sy, r.data); break;
+            case 'prop': if (!(SUBURB_REVIEW && fringeArtKit.drawProp(ctx, r.data.type, sx, sy, r.data))) drawProp(ctx, sx, sy, r.data); break;
             case 'wall': drawWall(ctx, sx, sy, r.data); break;
             case 'gate': drawGate(ctx, sx, sy, r.data); break;
             case 'npc': drawNPC(ctx, sx, sy, r.data); break;
@@ -10355,14 +10747,9 @@ function render() {
         }
     }
     
-    // Atmospheric ground fog — drifting haze patches
-    renderAtmosphericFog(cam);
-    
     // Ambient leaves and dust
     renderAmbientParticles(cam);
     
-    // Haze overlay
-    renderHaze(cam);
     // red panic tint when compulsion high
     try {
         if (greyline.getSide() === 'compulsion' && greyline.getExtremity() > 0.5) {
@@ -10380,6 +10767,9 @@ function render() {
     
     // Vignette (screen-space, not zoomed)
     renderVignette();
+    // Full Restraint Samsarra: charcoal, nearly deaf in colour, narrowing vision.
+    // Crucially: world only, never the HUD; Compulsion path remains untouched.
+    drawRestraintSamsarraVeil(ctx, samsarraEvent.snapshot, W, H);
     
     // Canvas HUD — orbs, skill bar, greyline, XP bar, psych stats
     renderCanvasHUD();
@@ -10415,8 +10805,14 @@ const SKILL_DATA = [
 function renderCanvasHUD() {
     const W = canvas.width;
     const H = canvas.height;
-    const visibleTop = 0;
-    const visibleBottom = H;
+    // Calculate the visible portion of the internal canvas when CSS-scaled & cropped.
+    // This lets HUD elements (orbs, skill bar, ammo) anchor to the visible region instead
+    // of being pushed off-screen when the canvas is zoomed to fill the viewport.
+    const vp = getViewportDims();
+    const displayScale = Math.max(vp.w / FIXED_CANVAS_W, vp.h / FIXED_CANVAS_H);
+    const visibleCanvasH = vp.h / displayScale; // in internal canvas pixels
+    const visibleTop = Math.round((H - visibleCanvasH) / 2);
+    const visibleBottom = Math.round(visibleTop + visibleCanvasH);
 
     // Scale based on canvas size but with a much higher minimum for readability
     const rawScale = Math.min(W / 1920, H / 1080);
@@ -11070,120 +11466,6 @@ function drawRankDisplay(s, visibleTop) {
     ctx.shadowBlur = 0;
 }
 
-function renderAtmosphericFog(cam) {
-    const t = TIME.elapsed;
-    // base haze density (1 = full, can be lowered for visibility)
-    let haz = greyline.knobs?.env?.hazDensity ?? 1.0;
-    // make fog even fainter by default to reduce overlapping darkness
-    haz *= 0.4;
-    const hazeEdge = greyline.knobs?.vfx?.hazeEdge ?? 0.25;
-    const samTier = greyline.samTier ?? 0;
-
-    // colors used for fog gradients (lighter neutral grey)
-    const fogColor0 = 'rgba(100,100,100,';   // inner color
-    const fogColor1 = 'rgba(80,80,80,';     // mid color
-    // adjust for restraint/compulsion prior to calculating visibility
-    try {
-        if (greyline.getSide() === 'restraint') {
-            const res = greyline.getExtremity();
-            haz *= 1 + Math.pow(res, 2) * 0.9;      // gentler swell
-            haz = Math.min(haz, 2.5);              // cap
-            // at extreme restraint we want the world to look dull but not pitch black,
-            // so tone down the fog density even if the knob would otherwise swell it
-            if (res > 0.8) haz *= 0.3;
-        }
-    } catch(e) {}
-    // Visibility rule: haze should *read* at all times, then swell with extremity (increased visibility)
-    let vis = 0.85 + haz * 0.45 + hazeEdge * 0.55 + samTier * 0.18;
-    // reduce fog when extreme compulsion
-    try {
-        if (greyline.getSide() === 'compulsion') {
-            const comp = greyline.getExtremity();
-            vis *= 1 - Math.min(1, comp * 0.9);
-        }
-    } catch(e) {}
-    // if fog very dense, render simple full-screen overlay and exit early
-    try {
-        if (greyline.getSide() === 'restraint' && greyline.getExtremity() > 0.5) {
-            ctx.save();
-            ctx.globalAlpha = Math.min(0.7, vis * 0.2);
-            ctx.fillStyle = 'rgba(50,40,30,1)';
-            ctx.fillRect(0,0,canvas.width,canvas.height);
-            ctx.restore();
-            return;
-        }
-    } catch(e) {}
-    
-    for (const fog of throttleArray(world.fogParticles)) {
-        // Drift slowly — more organic movement (speed itself is tinted by perceived time)
-        const timeScale = greyline.knobs?.timeScale ?? 1.0;
-        fog.x = fog.baseX + Math.sin(t * fog.speed * timeScale + fog.phase) * fog.size * 1.2;
-        fog.y = fog.baseY + Math.cos(t * fog.speed * 0.7 * timeScale + fog.phase * 1.3) * fog.size * 0.6;
-
-        const pos = worldToScreen(fog.x, fog.y);
-        const sx = pos.x + cam.x;
-        const sy = pos.y + cam.y;
-
-        const _cvw = canvas.width / camera.zoom, _cvh = canvas.height / camera.zoom;
-        if (sx < -220 || sx > _cvw + 220 || sy < -220 || sy > _cvh + 220) continue;
-
-        // larger screen radius for better readability and slightly brighter tint
-        const screenR = fog.size * TILE_W * (0.5 + haz * 0.18);
-        const pulse = Math.sin(t * (0.22 + haz * 0.12 + samTier * 0.08) + fog.phase) * (0.04 + hazeEdge * 0.035);
-        // stronger alpha with a sane floor so small values still render
-        const alpha = Math.max(0.03, ((fog.opacity * 1.5) + pulse) * vis * 0.7);
-
-        const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, screenR);
-        // cooler grey tone
-        grad.addColorStop(0, fogColor0 + alpha + ')');
-        grad.addColorStop(0.4, fogColor1 + (alpha * 0.7) + ')');
-        grad.addColorStop(1, 'rgba(18,15,12,0)');
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.ellipse(sx, sy, screenR, screenR * 0.45, 0, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    {
-        // if restraint high, only draw a few particles to save performance
-        let iter = throttleArray(world.fogParticles);
-        try {
-            if (greyline.getSide() === 'restraint' && greyline.getExtremity() > 0.6) {
-                iter = iter.slice(0, 8);
-            }
-        } catch(e) {}
-        for (const fog of iter) {
-        // Drift slowly — more organic movement (speed itself is tinted by perceived time)
-        const timeScale = greyline.knobs?.timeScale ?? 1.0;
-        fog.x = fog.baseX + Math.sin(t * fog.speed * timeScale + fog.phase) * fog.size * 1.2;
-        fog.y = fog.baseY + Math.cos(t * fog.speed * 0.7 * timeScale + fog.phase * 1.3) * fog.size * 0.6;
-
-        const pos = worldToScreen(fog.x, fog.y);
-        const sx = pos.x + cam.x;
-        const sy = pos.y + cam.y;
-
-        const _cvw = canvas.width / camera.zoom, _cvh = canvas.height / camera.zoom;
-        if (sx < -220 || sx > _cvw + 220 || sy < -220 || sy > _cvh + 220) continue;
-
-        // larger screen radius for better readability and slightly brighter tint
-        const screenR = fog.size * TILE_W * (0.5 + haz * 0.18);
-        const pulse = Math.sin(t * (0.22 + haz * 0.12 + samTier * 0.08) + fog.phase) * (0.04 + hazeEdge * 0.035);
-        // stronger alpha with a sane floor so small values still render
-        const alpha = Math.max(0.03, ((fog.opacity * 1.5) + pulse) * vis * 0.7);
-
-        const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, screenR);
-        // cooler grey tone
-        grad.addColorStop(0, fogColor0 + alpha + ')');
-        grad.addColorStop(0.4, fogColor1 + (alpha * 0.7) + ')');
-        grad.addColorStop(1, 'rgba(18,15,12,0)');
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.ellipse(sx, sy, screenR, screenR * 0.45, 0, 0, Math.PI * 2);
-        ctx.fill();
-    }
-}
-}
-
 function renderAmbientParticles(cam) {
     const t = TIME.elapsed;
     const vw = canvas.width / camera.zoom;
@@ -11253,6 +11535,243 @@ function renderAmbientParticles(cam) {
     }
 }
 
+
+// GREYLINE_GROUND_V2
+// World-anchored procedural ground. No external texture repetition.
+const GREYLINE_V2_ENABLED =
+    new URLSearchParams(window.location.search).get('ground') === 'v2';
+
+const greylineV2Cache = new Map();
+
+function greylineV2Hash(x, y) {
+    let n = Math.imul(x | 0, 374761393) +
+            Math.imul(y | 0, 668265263);
+    n = Math.imul(n ^ (n >>> 13), 1274126177);
+    return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
+}
+
+function greylineV2Noise(x, y) {
+    const ix = Math.floor(x), iy = Math.floor(y);
+    const fx = x - ix, fy = y - iy;
+    const u = fx * fx * (3 - 2 * fx);
+    const v = fy * fy * (3 - 2 * fy);
+    const a = greylineV2Hash(ix, iy);
+    const b = greylineV2Hash(ix + 1, iy);
+    const c = greylineV2Hash(ix, iy + 1);
+    const d = greylineV2Hash(ix + 1, iy + 1);
+    return (a + (b - a) * u) * (1 - v) +
+           (c + (d - c) * u) * v;
+}
+
+function greylineV2Material(type) {
+    if (type === 'road' || type === 'asphalt') return 'asphalt';
+    if (type === 'concrete') return 'concrete';
+    if (type === 'haze') return 'haze';
+    return 'earth';
+}
+
+function greylineV2Color(type, x, y) {
+    const large = greylineV2Noise(x * 0.055, y * 0.055);
+    const medium = greylineV2Noise(x * 0.19 + 31, y * 0.19);
+    const fine = greylineV2Hash(x, y);
+    const variation = (large - .5) * 27 +
+                      (medium - .5) * 19 +
+                      (fine - .5) * 10;
+
+    const base = type === 'asphalt' ? [51, 55, 55] :
+                 type === 'concrete' ? [91, 92, 87] :
+                 [58, 54, 47];
+
+    const channels = base.map(v =>
+        Math.max(0, Math.min(255, Math.round(v + variation)))
+    );
+
+    return `rgb(${channels.join(',')})`;
+}
+
+function greylineV2Tile(ctx, tile, x, y, sx, sy, hw, hh) {
+    const material = greylineV2Material(tile.type);
+
+    if (material === 'haze') return false;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - hh);
+    ctx.lineTo(sx + hw, sy);
+    ctx.lineTo(sx, sy + hh);
+    ctx.lineTo(sx - hw, sy);
+    ctx.closePath();
+    ctx.clip();
+
+    const key = `${material}:${x}:${y}`;
+    let surface = greylineV2Cache.get(key);
+
+    if (!surface) {
+        surface = document.createElement('canvas');
+        surface.width = 68;
+        surface.height = 36;
+
+        const c = surface.getContext('2d');
+        const image = c.createImageData(68, 36);
+
+        for (let py = 0; py < 36; py++) {
+            for (let px = 0; px < 68; px++) {
+                // World-space projected coordinates.
+                const wx = x + (px - 34) / 64;
+                const wy = y + (py - 18) / 32;
+
+                const large = greylineV2Noise(wx * 0.45, wy * 0.45);
+                const medium = greylineV2Noise(wx * 3.2, wy * 3.2);
+                const grain = greylineV2Hash(
+                    Math.floor(wx * 80),
+                    Math.floor(wy * 80)
+                );
+
+                const base = material === 'asphalt'
+                    ? [48, 52, 53]
+                    : material === 'concrete'
+                    ? [88, 89, 85]
+                    : [56, 52, 46];
+
+                const variation =
+                    (large - .5) * 23 +
+                    (medium - .5) * 13 +
+                    (grain - .5) * 12;
+
+                const i = (py * 68 + px) * 4;
+
+                for (let k = 0; k < 3; k++) {
+                    image.data[i + k] = Math.max(
+                        0, Math.min(255, base[k] + variation)
+                    );
+                }
+                image.data[i + 3] = 255;
+            }
+        }
+
+        c.putImageData(image, 0, 0);
+
+        // Bounded cache: prevents unbounded memory growth.
+        if (greylineV2Cache.size >= 2048) {
+            greylineV2Cache.clear();
+        }
+
+        greylineV2Cache.set(key, surface);
+    }
+
+    ctx.drawImage(surface, sx - 34, sy - 18);
+
+    ctx.restore();
+    return true;
+}
+
+
+// GREYLINE_GROUND_V3
+// Continuous projected-world material coordinates.
+const GREYLINE_V3_ENABLED =
+    new URLSearchParams(window.location.search).get('ground') === 'v3';
+
+const greylineV3Image = new Image();
+greylineV3Image.src =
+    './world-art/greyline-ground/greyline_asphalt_v2_2048.png';
+
+let greylineV3Pattern = null;
+let greylineV3PatternContext = null;
+
+function greylineV3DrawTile(ctx, tile, sx, sy, hw, hh, cam) {
+    if (!greylineV3Image.complete ||
+        !greylineV3Image.naturalWidth) return false;
+
+    if (!greylineV3Pattern ||
+        greylineV3PatternContext !== ctx) {
+        greylineV3Pattern = ctx.createPattern(
+            greylineV3Image, 'repeat'
+        );
+        greylineV3PatternContext = ctx;
+    }
+
+    if (!greylineV3Pattern) return false;
+
+    const isAsphalt =
+        tile.type === 'road' ||
+        tile.type === 'asphalt';
+
+    if (!isAsphalt) return false;
+
+    ctx.save();
+
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - hh);
+    ctx.lineTo(sx + hw, sy);
+    ctx.lineTo(sx, sy + hh);
+    ctx.lineTo(sx - hw, sy);
+    ctx.closePath();
+
+    // Pattern transform is expressed in the same unzoomed
+    // projected coordinate system used by renderTerrain.
+    // The camera offset is cancelled so the material remains
+    // fixed relative to world geometry.
+    const repeatSize = 256;
+    const scale = repeatSize / greylineV3Image.naturalWidth;
+
+    const transform = new DOMMatrix();
+    transform.translateSelf(cam.x, cam.y);
+    transform.scaleSelf(scale, scale);
+
+    greylineV3Pattern.setTransform(transform);
+
+    ctx.fillStyle = greylineV3Pattern;
+    ctx.fill();
+
+    ctx.restore();
+    return true;
+}
+
+
+// GREYLINE_GROUND_V4
+// Render-only classification. Never modifies world.tiles.
+const GREYLINE_V4_ENABLED =
+    new URLSearchParams(window.location.search).get('ground') === 'v4';
+
+function greylineV4VisualTile(x, y, tile) {
+    if (!GREYLINE_V4_ENABLED) return tile;
+
+    const type = tile.type;
+
+    // Preserve hub, haze, and explicit roads.
+    if (type === 'hub_stone' ||
+        type === 'hub_edge' ||
+        type === 'haze' ||
+        type === 'road' ||
+        type === 'asphalt') {
+        return tile;
+    }
+
+    // Suppress scattered concrete islands.
+    if (type === 'concrete') {
+        let roadNeighbours = 0;
+
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                const n = world.tiles[x + dx]?.[y + dy];
+                if (n && (n.type === 'road' ||
+                          n.type === 'asphalt')) {
+                    roadNeighbours++;
+                }
+            }
+        }
+
+        return {
+            ...tile,
+            type: roadNeighbours >= 2
+                ? 'concrete'
+                : 'dirt'
+        };
+    }
+
+    return tile;
+}
+
 function renderTerrain(cam) {
     // Convert all 4 screen corners to world-space to find the full visible tile range
     // Account for camera zoom — visible area is smaller when zoomed in
@@ -11280,10 +11799,14 @@ function renderTerrain(cam) {
     const endX = Math.min(WORLD_SIZE, Math.ceil(maxWX) + pad);
     const endY = Math.min(WORLD_SIZE, Math.ceil(maxWY) + pad);
     
-    for (let x = startX; x < endX; x++) {
-        for (let y = startY; y < endY; y++) {
+    const useTextures = groundDirtPattern && groundHubPattern;
+
+    // if performance is poor, skip every other tile row/column to reduce load
+    const step = tileStep;
+    for (let x = startX; x < endX; x += step) {
+        for (let y = startY; y < endY; y += step) {
             if (!world.tiles[x] || !world.tiles[x][y]) continue;
-            const tile = world.tiles[x][y];
+            const tile = greylineV4VisualTile(x, y, world.tiles[x][y]);
             const pos = worldToScreen(x, y);
             const sx = pos.x + cam.x;
             const sy = pos.y + cam.y;
@@ -11294,13 +11817,22 @@ function renderTerrain(cam) {
             if (sx < -TILE_W * 2 || sx > vw2 + TILE_W * 2 || 
                 sy < -TILE_H * 2 || sy > vh2 + TILE_H * 2) continue;
             
+            const s = tile.shade;
+            const v = tile.variation;
+            const isHub = tile.type === 'hub_stone' || tile.type === 'hub_edge';
             const isHaze = tile.type === 'haze';
             
             // Draw slightly oversized diamond to prevent subpixel gaps (extra padding for zoom)
             const hw = TILE_W / 2 + 1.5;
             const hh = TILE_H / 2 + 1.5;
             
-            if (isHaze) {
+            if ((GREYLINE_V3_ENABLED || GREYLINE_V4_ENABLED) && !isHaze &&
+                    greylineV3DrawTile(ctx, tile, sx, sy, hw, hh, cam)) {
+                    // Greyline V3 continuous asphalt.
+                } else if (GREYLINE_V2_ENABLED && !isHaze &&
+                    greylineV2Tile(ctx, tile, x, y, sx, sy, hw, hh)) {
+                    // Greyline V2 procedural surface.
+                } else if (isHaze) {
                 const ha = Math.min(1, tile.hazeAmount);
                 const r = Math.floor(18 + (1 - ha) * 20);
                 const g = Math.floor(16 + (1 - ha) * 16);
@@ -11314,21 +11846,111 @@ function renderTerrain(cam) {
                 ctx.lineTo(sx - hw, sy);
                 ctx.closePath();
                 ctx.fill();
-            } else {
+            } else if (groundAtlas) {
                 const variants = groundAtlas[tile.type] || groundAtlas.dirt;
                 const texture = variants[Math.floor(tile.variation * variants.length)];
                 ctx.drawImage(texture, sx - (TILE_W + 1) / 2, sy - (TILE_H + 0.5) / 2,
                     TILE_W + 1, TILE_H + 0.5);
-                const axis = tile.streetAxis;
-                if ((axis === 'x' && x % 2 === 0) || (axis === 'y' && y % 2 === 0)) {
-                    const direction = axis === 'x' ? 1 : -1;
-                    ctx.strokeStyle = 'rgba(155,137,94,.53)';
-                    ctx.lineWidth = 1.4;
-                    ctx.beginPath();
-                    ctx.moveTo(sx - 8, sy - direction * 4);
-                    ctx.lineTo(sx + 8, sy + direction * 4);
-                    ctx.stroke();
+            } else if (useTextures) {
+                // Textured tile rendering — use pre-clipped diamond canvases
+                // Choose appropriate ground pattern for the tile type
+                let pattern;
+                switch (tile.type) {
+                    case 'hub_stone':
+                    case 'hub_edge':
+                        pattern = groundHubPattern;
+                        break;
+                    case 'road':
+                        pattern = groundRoadPattern || groundDirtPattern;
+                        break;
+                    case 'asphalt':
+                        pattern = groundAsphaltPattern || groundDirtPattern;
+                        break;
+                    case 'concrete':
+                        pattern = groundConcretePattern || groundDirtPattern;
+                        break;
+                    default:
+                        pattern = groundDirtPattern;
                 }
+                // Apply shade variation via globalAlpha and color overlay
+                ctx.globalAlpha = 0.75 + s * 0.25;
+                ctx.drawImage(pattern,
+                    sx - pattern.width / 2,
+                    sy - pattern.height / 2);
+                ctx.globalAlpha = 1;
+
+                // Color overlay for tile type variation
+                let overlayR, overlayG, overlayB, overlayA;
+                switch (tile.type) {
+                    case 'hub_stone':
+                        overlayR = 55; overlayG = 45; overlayB = 35; overlayA = 0.08 + v * 0.04;
+                        break;
+                    case 'hub_edge':
+                        overlayR = 40; overlayG = 36; overlayB = 30; overlayA = 0.1;
+                        break;
+                    case 'deadgrass':
+                        overlayR = 35; overlayG = 40; overlayB = 28; overlayA = 0.08 + v * 0.06;
+                        break;
+                    case 'path':
+                        overlayR = 50; overlayG = 42; overlayB = 35; overlayA = 0.06;
+                        break;
+                    case 'road':
+                        overlayR = 48; overlayG = 48; overlayB = 50; overlayA = 0.05 + v * 0.03;
+                        break;
+                    case 'asphalt':
+                        overlayR = 36; overlayG = 36; overlayB = 38; overlayA = 0.06 + v * 0.03;
+                        break;
+                    case 'concrete':
+                        overlayR = 58; overlayG = 58; overlayB = 60; overlayA = 0.04 + v * 0.02;
+                        break;
+                    default: // dirt
+                        overlayR = 38; overlayG = 32; overlayB = 26; overlayA = 0.03 + v * 0.03;
+                }
+                ctx.fillStyle = `rgba(${overlayR},${overlayG},${overlayB},${overlayA})`;
+                ctx.beginPath();
+                ctx.moveTo(sx, sy - hh);
+                ctx.lineTo(sx + hw, sy);
+                ctx.lineTo(sx, sy + hh);
+                ctx.lineTo(sx - hw, sy);
+                ctx.closePath();
+                ctx.fill();
+            } else {
+                // Fallback: solid color diamonds (improved colors)
+                let r, g, b;
+                switch (tile.type) {
+                    case 'hub_stone':
+                        r = Math.floor((52 + v * 10) * s);
+                        g = Math.floor((44 + v * 8) * s);
+                        b = Math.floor((36 + v * 6) * s);
+                        break;
+                    case 'hub_edge':
+                        r = Math.floor((46 + v * 8) * s);
+                        g = Math.floor((40 + v * 6) * s);
+                        b = Math.floor((32 + v * 5) * s);
+                        break;
+                    case 'deadgrass':
+                        r = Math.floor((42 + v * 8) * s);
+                        g = Math.floor((44 + v * 10) * s);
+                        b = Math.floor((30 + v * 5) * s);
+                        break;
+                    case 'path':
+                        r = Math.floor((50 + v * 8) * s);
+                        g = Math.floor((42 + v * 6) * s);
+                        b = Math.floor((36 + v * 5) * s);
+                        break;
+                    default: // dirt
+                        r = Math.floor((42 + v * 10) * s);
+                        g = Math.floor((36 + v * 8) * s);
+                        b = Math.floor((28 + v * 5) * s);
+                }
+                ctx.fillStyle = `rgb(${r},${g},${b})`;
+                ctx.beginPath();
+                ctx.moveTo(sx, sy - hh);
+                ctx.lineTo(sx + hw, sy);
+                ctx.lineTo(sx, sy + hh);
+                ctx.lineTo(sx - hw, sy);
+                ctx.closePath();
+                ctx.fill();
             }
         }
     }
@@ -11352,7 +11974,76 @@ function renderTerrain(cam) {
     }
 }
 
+function drawFringeMailbox(ctx, x, y, event) {
+    const paint = (box, face, flag) => {
+        ctx.fillStyle = '#262724';
+        ctx.fillRect(x-1.5,y-12,3,12);
+        ctx.fillStyle = box;
+        ctx.beginPath();
+        ctx.moveTo(x-7,y-15);
+        ctx.lineTo(x-2,y-21);
+        ctx.lineTo(x+7,y-17);
+        ctx.lineTo(x+2,y-11);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = face;
+        ctx.fillRect(x-7,y-15,9,4);
+        ctx.fillStyle = flag;
+        ctx.fillRect(x+2,y-20,1,6);
+        ctx.fillRect(x+2,y-20,4,2);
+    };
+    if (event.intensity < 1) paint('#536565','#353f3e','#a85642');
+    if (event.intensity > 0) {
+        ctx.globalAlpha *= event.intensity;
+        if (event.polarity === 'restraint') paint('#a5aa9e','#646d68','#888d83');
+        else paint('#774735','#402b2a','#9e5d48');
+    }
+}
+
 function drawStructure(ctx, sx, sy, s) {
+    if (s.type === 'civicLandmark') {
+        drawCivicLandmark(ctx, sx, sy, s, loadedImages[s.id], samsarraEvent.snapshot);
+        return;
+    }
+    // G1.8 governed House A path: physical PNG is 2048, but it occupies the
+    // frozen 512x512 logical projection canvas. Draw by canonical ground anchor.
+    if (s.type === 'governedHouseA') {
+        const img = loadedImages[s.asset];
+        if (!img) return;
+
+        const g = s.governedSprite;
+        const w = g.logicalWidth;
+        const h = g.logicalHeight;
+
+        ctx.save();
+        ctx.translate(sx, sy);
+        const event = samsarraEvent.snapshot;
+        const craftHouse = suburbReview && s.asset === 'houseA01Suburb';
+        const ordinary = (craftHouse && fringeCraftArt['a01-ordinary']) ||
+            (suburbReview && samsarraHouseImages.get(`${s.asset}-ordinary`)) || img;
+        const variant = (craftHouse && fringeCraftArt[`a01-${event.polarity}`]) ||
+            (suburbReview && samsarraHouseImages.get(`${s.asset}-${event.polarity}`));
+        // Bleed starts at the porch. Other lots join as district pressure rises.
+        const mix = variant ? (s.asset === 'houseA01Suburb'
+            ? event.intensity : clamp01((event.intensity - .20) / .80)) : 0;
+        if (mix < 1) ctx.drawImage(ordinary, -g.anchorPixelX, -g.anchorPixelY, w, h);
+        if (mix > 0) {
+            ctx.save();
+            ctx.globalAlpha *= mix;
+            ctx.drawImage(variant, -g.anchorPixelX, -g.anchorPixelY, w, h);
+            ctx.restore();
+        }
+
+        if (s.governedTest && (!SUBURB_REVIEW || SHOW_SUBURB_LABELS)) {
+            ctx.font = '10px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = 'rgba(230,210,170,0.9)';
+            ctx.fillText(s.label || '[G1.8 HOUSE TEST]', 0, 20);
+        }
+        ctx.restore();
+        return;
+    }
+
     // Use sprite-based rendering for hub buildings
     const isChapel = s.type === 'chapel';
     // Allow per-structure override (house1..house3) for shacks
@@ -11360,9 +12051,8 @@ function drawStructure(ctx, sx, sy, s) {
     
     if (img) {
         let scale = isChapel ? 1.4 : 0.9 + (s.w + s.h) * 0.06;
-        // Suburban sprites fit their lot. Holdfast buildings keep their landmark scale.
-        if (s.suburban) scale = 0.73;
-        else if (s.asset && s.asset.startsWith('house')) scale *= 1.5;
+        // If this structure uses a house asset, render it ~1.5× larger as requested
+        if (s.asset && String(s.asset).startsWith('house')) scale *= 1.5;
         const h = (isChapel ? 160 : 110) * scale;
         const w = h * (img.width / img.height);
         
@@ -11375,7 +12065,7 @@ function drawStructure(ctx, sx, sy, s) {
         // Draw building sprite
         ctx.save();
         ctx.translate(sx, sy);
-        ctx.drawImage(img, -w / 2, s.suburban ? -h + TILE_H * s.h * 0.38 : -h + h * 0.15, w, h);
+        ctx.drawImage(img, -w / 2, -h + h * 0.15, w, h);
         ctx.restore();
         
         // Warm lantern glow
@@ -11601,15 +12291,33 @@ function drawWall(ctx, sx, sy, w) {
     ctx.ellipse(sx, sy + 3, wallW * 0.6, 4, 0, 0, Math.PI * 2);
     ctx.fill();
     
-    // Wall body — dark stone with slight warmth
-    const shade = 0.85 + dmg * 0.1;
-    ctx.fillStyle = `rgb(${Math.floor(28 * shade)},${Math.floor(24 * shade)},${Math.floor(20 * shade)})`;
-    ctx.fillRect(sx - wallW / 2, sy - wallH, wallW, wallH);
-    
-    // Top — crenellation
-    ctx.fillStyle = `rgb(${Math.floor(32 * shade)},${Math.floor(28 * shade)},${Math.floor(22 * shade)})`;
-    ctx.fillRect(sx - wallW / 2 - 1, sy - wallH - 3, wallW + 2, 4);
-    
+    // Follow the projected neighbour: the old fixed-width rectangles read as black posts.
+    const face=wallFace(w,worldToScreen);
+    ctx.beginPath();
+    face.forEach((p,i)=>i===0?ctx.moveTo(sx+p.x,sy+p.y):ctx.lineTo(sx+p.x,sy+p.y));
+    ctx.closePath();
+    ctx.fillStyle = '#514b40';
+    ctx.fill();
+    ctx.strokeStyle = '#302d27';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    // Cap and mortar courses follow the same perspective, never screen-aligned pillars.
+    ctx.strokeStyle = '#827866';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(sx+face[3].x,sy+face[3].y);
+    ctx.lineTo(sx+face[2].x,sy+face[2].y);
+    ctx.stroke();
+    ctx.strokeStyle = '#37332c';
+    ctx.lineWidth = 0.7;
+    for(let course=1;course<5;course++) {
+        const t=course/5;
+        ctx.beginPath();
+        ctx.moveTo(sx,sy+face[3].y*t);
+        ctx.lineTo(sx+face[1].x,sy+face[1].y+(face[2].y-face[1].y)*t);
+        ctx.stroke();
+    }
+
     // Damage cracks
     if (dmg > 0.1) {
         ctx.strokeStyle = `rgba(15,12,10,${dmg * 0.6})`;
@@ -11713,7 +12421,7 @@ function drawNPC(ctx, sx, sy, npc) {
     
     if (img) {
         // Sprite-based NPC rendering with bottom 5% crop (green circle artifact removal)
-        const spriteH = 65;
+        const spriteH = actorHeight('npc', npc.heightM) * ACTOR_SPRITE_SCALE;
         const spriteW = spriteH * (img.width / img.height);
         const cropBottom = Math.floor(img.height * 0.05);
         const srcH = img.height - cropBottom;
@@ -11860,6 +12568,8 @@ function drawSnare(ctx, sx, sy, s) {
 }
 
 function drawPlayer(ctx, sx, sy) {
+    const pose = alizaAtlas ? alizaPose(player) : null;
+    const frame = pose ? alizaFrame(pose) : null;
     const img = loadedImages.aliza;
     const side = greyline.getSide();
     const extr = greyline.getExtremity();
@@ -11892,7 +12602,7 @@ function drawPlayer(ctx, sx, sy) {
         headTilt = Math.sin(T * 0.6) * 0.008;
     }
     
-    const dashAlpha = player.state === 'dashing' ? 0.5 : 1.0;
+    const dashAlpha = player.dashTimer > 0 ? (frame ? 0.92 : 0.5) : 1.0;
     
     // ── DYNAMIC SHADOW ──
     const shadowStretchX = player.state === 'dashing' ? 22 : player.state === 'moving' ? 17 + Math.abs(Math.sin(footPhase)) * 3 : 16;
@@ -11902,8 +12612,8 @@ function drawPlayer(ctx, sx, sy) {
     ctx.ellipse(sx + bobX, sy + 2, shadowStretchX, shadowStretchY, 0, 0, Math.PI * 2);
     ctx.fill();
     
-    // Invulnerability flash
-    if (player.invulnTimer > 0 && Math.floor(T * 20) % 2 === 0) return;
+    // Dash retains a readable silhouette through its invulnerability window.
+    if (player.invulnTimer > 0 && Math.floor(T * 20) % 2 === 0 && !(frame && pose.action === 'dash')) return;
     
     // ── SHADOW ACKNOWLEDGEMENT AURA ──
     if (player.shadowActive) {
@@ -12122,28 +12832,34 @@ function drawPlayer(ctx, sx, sy) {
         ctx.fillText('HIDDEN', sx, sy - 30);
         ctx.restore();
     }
-    if (activeImg) {
-        const spriteH = 80; // render height in px for player sprites
-        // Crop bottom 5% of source to remove green circle artifacts from bg removal
-        const srcCropBottom = Math.floor(activeImg.height * 0.05);
-        const srcH = activeImg.height - srcCropBottom;
-        const srcW = activeImg.width;
-        const spriteW = spriteH * (srcW / activeImg.height);
-        const cropH = spriteH * (srcH / activeImg.height);
-        
-        // If we're emulating a crouch (no dedicated crouch sprite available),
-        // apply a subtle squash and downward offset so the player appears lower.
-        if (typeof crouchEmulate !== 'undefined' && crouchEmulate) {
-            scaleY *= 0.82;
-            offsetY += 6;
+    if (frame || activeImg) {
+        if (frame) {
+            const breath = pose.action === 'stand' ? 1 + Math.sin(T * 2.2) * 0.012 : 1;
+            const flash = pose.action === 'gunfire' ? Math.max(0, 1 - pose.progress / 0.34) : 0;
+            drawAlizaFrame(ctx, alizaAtlas, frame, sx, sy, PLAYER_SPRITE_H, breath, flash);
+        } else {
+            const spriteH = PLAYER_SPRITE_H; // character render height
+            // Crop bottom 5% of source to remove green circle artifacts from bg removal
+            const srcCropBottom = Math.floor(activeImg.height * 0.05);
+            const srcH = activeImg.height - srcCropBottom;
+            const srcW = activeImg.width;
+            const spriteW = spriteH * (srcW / activeImg.height);
+            const cropH = spriteH * (srcH / activeImg.height);
+
+            // If we're emulating a crouch (no dedicated crouch sprite available),
+            // apply a subtle squash and downward offset so the player appears lower.
+            if (typeof crouchEmulate !== 'undefined' && crouchEmulate) {
+                scaleY *= 0.82;
+                offsetY += 6;
+            }
+            ctx.save();
+            ctx.translate(sx + bobX + offsetX, sy - bobY + offsetY);
+            if (flipX) ctx.scale(-1, 1);
+            ctx.rotate(lean);
+            ctx.scale(Math.abs(scaleX), scaleY);
+            ctx.drawImage(activeImg, 0, 0, srcW, srcH, -spriteW / 2, -cropH + 5, spriteW, cropH);
+            ctx.restore();
         }
-        ctx.save();
-        ctx.translate(sx + bobX + offsetX, sy - bobY + offsetY);
-        if (flipX) ctx.scale(-1, 1);
-        ctx.rotate(lean);
-        ctx.scale(Math.abs(scaleX), scaleY);
-        ctx.drawImage(activeImg, 0, 0, srcW, srcH, -spriteW / 2, -cropH + 5, spriteW, cropH);
-        ctx.restore();
         
         // ══════════════════════════════════════════
         // ATTACK EFFECTS — 360° directional slash arc toward mouse
@@ -12153,8 +12869,9 @@ function drawPlayer(ctx, sx, sy) {
             const atkDuration = 0.25;
             const raw = player.attackTimer / atkDuration;
             const t = Math.max(0, Math.min(1, raw));
-            if (t < 0.7 && t > 0.05) {
-                const strikePhase = (0.7 - t) / 0.65;
+            const atlasStrike = frame && pose.action === 'knife' && pose.progress < 0.42;
+            if (atlasStrike || (!frame && t < 0.7 && t > 0.05)) {
+                const strikePhase = atlasStrike ? Math.max(0.05, 1 - pose.progress / 0.42) : (0.7 - t) / 0.65;
                 
                 // Convert attack angle to screen-space angle for the arc
                 // In isometric, world angle needs to be mapped to screen
@@ -12165,11 +12882,11 @@ function drawPlayer(ctx, sx, sy) {
                 const aStart = worldToScreen(player.x, player.y);
                 const screenAtkAngle = Math.atan2(aEnd.y - aStart.y, aEnd.x - aStart.x);
                 
-                const slashR = 24 + strikePhase * 14;
+                const slashR = atlasStrike ? PLAYER_SPRITE_H * (0.26 + strikePhase * 0.25) : 24 + strikePhase * 14;
                 const arcSpan = 1.0 + strikePhase * 0.5;
                 const arcCenter = screenAtkAngle;
-                const arcCenterX = sx + offsetX;
-                const arcCenterY = sy - 22 - bobY + offsetY;
+                const arcCenterX = atlasStrike ? sx : sx + offsetX;
+                const arcCenterY = atlasStrike ? sy - PLAYER_SPRITE_H * 0.46 : sy - 22 - bobY + offsetY;
                 
                 // Primary slash arc — bright, sweeping
                 ctx.strokeStyle = `rgba(210,190,155,${strikePhase * 0.75})`;
@@ -12248,8 +12965,18 @@ function drawPlayer(ctx, sx, sy) {
     ctx.globalAlpha = 1.0;
     
     // ── DASH GHOST TRAIL — multi-frame afterimages ──
-    if (player.state === 'dashing' && activeImg) {
-        const _dSpriteH = 80;
+    if (frame && pose.action === 'dash') {
+        const heading = worldToScreen(player.dashDirX, player.dashDirY);
+        const length = Math.hypot(heading.x, heading.y) || 1;
+        for (let i = 3; i >= 1; i--) {
+            ctx.globalAlpha = 0.17 - i * 0.035;
+            const offset = i * 7;
+            drawAlizaFrame(ctx, alizaAtlas, frame, sx - offset * heading.x / length,
+                sy - offset * heading.y / length, PLAYER_SPRITE_H);
+        }
+        ctx.globalAlpha = 1;
+    } else if (player.state === 'dashing' && activeImg) {
+        const _dSpriteH = PLAYER_SPRITE_H;
         const _dSrcCrop = Math.floor(activeImg.height * 0.05);
         const _dSrcH = activeImg.height - _dSrcCrop;
         const _dSpriteW = _dSpriteH * (activeImg.width / activeImg.height);
@@ -12285,10 +13012,10 @@ function drawPlayer(ctx, sx, sy) {
 }
 
 // Helper: draw enemy sprite with bottom 5% crop to remove green circle artifacts
-function drawEnemySprite(ctx, img, dx, dy, dw, dh, enemyType) {
+function drawEnemySprite(ctx, img, dx, dy, dw, dh, enemyType, fitted = false) {
     if (!img) return;
     // Burdened asset has a large green platform base — crop 30% from bottom
-    const cropFraction = enemyType === 'burdened' ? 0.30 : enemyType === 'hollow_warden' ? 0 : 0.05;
+    const cropFraction = fitted ? 0 : enemyType === 'burdened' ? 0.30 : 0.05;
     const cropBottom = Math.floor(img.height * cropFraction);
     const srcH = img.height - cropBottom;
     ctx.drawImage(img, 0, 0, img.width, srcH, dx, dy, dw, dh);
@@ -12299,18 +13026,14 @@ function drawEnemy(ctx, sx, sy, e, cam) {
     const bobY = e.dead ? 0 : Math.sin(e.bobPhase) * 2;
     cam = cam || { x: 0, y: 0 };
     
-    let spriteH;
-    switch (e.type) {
-        case 'burdened': spriteH = 90; break;
-        case 'huddled': spriteH = 60; break;
-        case 'deferred': spriteH = 52; break;
-        case 'hollow_warden': spriteH = 110; break;
-        default: spriteH = 70; break;
-    }
-    
-    const imgKey = e.type;
-    const img = loadedImages[imgKey];
-    let spriteW = img ? spriteH * (img.width / img.height) : 16;
+    const event = samsarraEvent.snapshot;
+    const form = e.dead ? (e.deathForm ?? 'ordinary') : e.civicHuddle?.form ?? samsarraEnemyForm(event);
+    const fitted = loadedImages[`${e.type}-${form}`] ?? loadedImages[`${e.type}-ordinary`];
+    const img = fitted ?? loadedImages[e.type];
+    const heightScale = !fitted ? 1 : form === 'restraint' && e.type === 'lingering' ? .78
+        : form === 'compulsion' && e.type === 'watchful' ? 1.17 : 1;
+    const spriteH = actorHeight(e.type, e.heightM) * ACTOR_SPRITE_SCALE * heightScale;
+    const spriteW = img ? spriteH * (img.width / img.height) : 16;
     
     // ── DEATH ANIMATION RENDERING ──
     
@@ -12348,7 +13071,7 @@ function drawEnemy(ctx, sx, sy, e, cam) {
                     const drawH = spriteH * squash;
                     const drawW = spriteW + spread;
                     const drawY = sy - drawH + 5;
-                    drawEnemySprite(ctx, img, sx - drawW / 2 + shakeX, drawY, drawW, drawH, e.type);
+                    drawEnemySprite(ctx, img, sx - drawW / 2 + shakeX, drawY, drawW, drawH, e.type, Boolean(fitted));
                 } else {
                     ctx.fillStyle = '#30281f';
                     const drawH = (spriteH - 10) * squash;
@@ -12404,7 +13127,7 @@ function drawEnemy(ctx, sx, sy, e, cam) {
                     ctx.beginPath();
                     ctx.rect(sx - spriteW, drawY, spriteW * 2, clipH);
                     ctx.clip();
-                    drawEnemySprite(ctx, img, sx - spriteW / 2, drawY, spriteW, spriteH, e.type);
+                    drawEnemySprite(ctx, img, sx - spriteW / 2, drawY, spriteW, spriteH, e.type, Boolean(fitted));
                     ctx.restore();
                     
                     // Dissolving edge — a ragged shimmer line at the dissolve boundary
@@ -12463,7 +13186,7 @@ function drawEnemy(ctx, sx, sy, e, cam) {
                 }
                 
                 if (img) {
-                    drawEnemySprite(ctx, img, sx - spriteW / 2 + shakeX, sy - spriteH + 5 + sinkY, spriteW, spriteH, e.type);
+                    drawEnemySprite(ctx, img, sx - spriteW / 2 + shakeX, sy - spriteH + 5 + sinkY, spriteW, spriteH, e.type, Boolean(fitted));
                 } else {
                     ctx.fillStyle = '#2a2825';
                     ctx.fillRect(sx - 8 + shakeX, sy - spriteH + 8 + sinkY, 16, spriteH - 10);
@@ -12506,7 +13229,7 @@ function drawEnemy(ctx, sx, sy, e, cam) {
                     ctx.translate(sx, sy);
                     ctx.rotate(tiltToward);
                     ctx.scale(contract, squish);
-                    drawEnemySprite(ctx, img, -spriteW / 2, -spriteH + 5, spriteW, spriteH, e.type);
+                    drawEnemySprite(ctx, img, -spriteW / 2, -spriteH + 5, spriteW, spriteH, e.type, Boolean(fitted));
                     ctx.restore();
                 } else {
                     ctx.fillStyle = '#252320';
@@ -12552,17 +13275,17 @@ function drawEnemy(ctx, sx, sy, e, cam) {
                         ctx.beginPath();
                         ctx.rect(sx - spriteW / 2 - splitX + shakeX, sy - spriteH + 5 + shakeY, halfW, spriteH);
                         ctx.clip();
-                        drawEnemySprite(ctx, img, sx - spriteW / 2 - splitX + shakeX, sy - spriteH + 5 + shakeY, spriteW, spriteH, e.type);
+                        drawEnemySprite(ctx, img, sx - spriteW / 2 - splitX + shakeX, sy - spriteH + 5 + shakeY, spriteW, spriteH, e.type, Boolean(fitted));
                         ctx.restore();
                         
                         ctx.save();
                         ctx.beginPath();
                         ctx.rect(sx + shakeX + splitX, sy - spriteH + 5 - shakeY, halfW, spriteH);
                         ctx.clip();
-                        drawEnemySprite(ctx, img, sx - spriteW / 2 + splitX + shakeX, sy - spriteH + 5 - shakeY, spriteW, spriteH, e.type);
+                        drawEnemySprite(ctx, img, sx - spriteW / 2 + splitX + shakeX, sy - spriteH + 5 - shakeY, spriteW, spriteH, e.type, Boolean(fitted));
                         ctx.restore();
                     } else {
-                        drawEnemySprite(ctx, img, sx - spriteW / 2 + shakeX, sy - spriteH + 5 + shakeY, spriteW, spriteH, e.type);
+                        drawEnemySprite(ctx, img, sx - spriteW / 2 + shakeX, sy - spriteH + 5 + shakeY, spriteW, spriteH, e.type, Boolean(fitted));
                     }
                     
                     // Crack lines across the body
@@ -12621,7 +13344,7 @@ function drawEnemy(ctx, sx, sy, e, cam) {
                 if (img) {
                     const drawH = spriteH * squash;
                     const drawW = spriteW * (1 + spread * 0.3);
-                    drawEnemySprite(ctx, img, sx - drawW / 2, sy - drawH + 5 + lift, drawW, drawH, e.type);
+                    drawEnemySprite(ctx, img, sx - drawW / 2, sy - drawH + 5 + lift, drawW, drawH, e.type, Boolean(fitted));
                 } else {
                     ctx.fillStyle = '#1e1a16';
                     const drawH = (spriteH - 10) * squash;
@@ -12685,7 +13408,7 @@ function drawEnemy(ctx, sx, sy, e, cam) {
                 if (img) {
                     const drawH = spriteH * (1 - deflate * 0.4);
                     const drawW = spriteW * (1 - deflate * 0.15);
-                    drawEnemySprite(ctx, img, sx - drawW / 2, sy - drawH + 5, drawW, drawH, e.type);
+                    drawEnemySprite(ctx, img, sx - drawW / 2, sy - drawH + 5, drawW, drawH, e.type, Boolean(fitted));
                 } else {
                     ctx.fillStyle = '#201c18';
                     const drawH = (spriteH - 10) * (1 - deflate * 0.4);
@@ -12741,11 +13464,11 @@ function drawEnemy(ctx, sx, sy, e, cam) {
                     // Mirror effect — slight duplicate offset
                     if (dt > 0.6 && dt < 1.8 && flicker > 0.8) {
                         ctx.globalAlpha = spriteAlpha * 0.15;
-                        drawEnemySprite(ctx, img, sx - spriteW / 2 + flinchX + 3, sy - spriteH + 5 - riseY - 2, spriteW, spriteH, e.type);
+                        drawEnemySprite(ctx, img, sx - spriteW / 2 + flinchX + 3, sy - spriteH + 5 - riseY - 2, spriteW, spriteH, e.type, Boolean(fitted));
                         ctx.globalAlpha = spriteAlpha * flicker;
                     }
                     
-                    drawEnemySprite(ctx, img, sx - spriteW / 2 + flinchX, sy - spriteH + 5 - riseY, spriteW, spriteH, e.type);
+                    drawEnemySprite(ctx, img, sx - spriteW / 2 + flinchX, sy - spriteH + 5 - riseY, spriteW, spriteH, e.type, Boolean(fitted));
                 } else {
                     ctx.fillStyle = '#2c2822';
                     ctx.fillRect(sx - 8 + flinchX, sy - spriteH + 8 - riseY, 16, spriteH - 10);
@@ -12768,8 +13491,7 @@ function drawEnemy(ctx, sx, sy, e, cam) {
         ctx.fill();
         
         if (img) {
-            const collapse = spriteH * (1 - Math.min(1, dt) * 0.7);
-            drawEnemySprite(ctx, img, sx - spriteW / 2, sy - collapse + 5, spriteW, collapse, e.type);
+            drawEnemySprite(ctx, img, sx - spriteW / 2, sy - spriteH + 5, spriteW, spriteH, e.type, Boolean(fitted));
         } else {
             ctx.fillStyle = '#252220';
             ctx.fillRect(sx - 8, sy - spriteH + 8, 16, spriteH - 10);
@@ -12866,6 +13588,8 @@ function drawEnemy(ctx, sx, sy, e, cam) {
             eLean = e.facing * lunge * 0.1;
         }
         
+    } else if (e.civicHuddle) {
+        ({x:eBobX,y:eBobY,lean:eLean,width:eScaleX,height:eScaleY} = civicHuddledPose(e.civicHuddle,T,e.bobPhase));
     } else if (e.type === 'huddled') {
         // ── HUDDLED: Shrinks when alone, emboldens in group, grief-rocking ──
         const panic = (e.isolationPanic || 0);
@@ -13034,60 +13758,38 @@ function drawEnemy(ctx, sx, sy, e, cam) {
         }
     }
     
-    if (e.isBoss) {
-        const windup = e.state === 'windup' ? Math.min(1, e.stateTimer / 0.75) : 0;
-        const slam = e.state === 'slam' ? Math.max(0, 1 - e.stateTimer / 0.45) : 0;
-        eScaleY += windup * 0.14 - slam * 0.20;
-        eScaleX += slam * 0.16;
-        eLean -= e.facing * windup * 0.13;
-        if (windup || slam) {
-            ctx.strokeStyle = `rgba(221,105,77,${0.18 + 0.5 * Math.max(windup, slam)})`;
-            ctx.lineWidth = 1.8;
-            ctx.beginPath();
-            ctx.ellipse(sx, sy, e.attackRange * TILE_W / Math.SQRT2,
-                e.attackRange * TILE_H / Math.SQRT2, 0, 0, Math.PI * 2);
-            ctx.stroke();
-        }
-    }
-
-    const attackAge = T - e.lastAttackAt;
-    const recoil = attackAge < 0.24 ? Math.sin(Math.PI * attackAge / 0.24) : 0;
-    const stride = Math.sin(e.stridePhase) * e.motion;
-    eLean += stride * 0.025 + recoil * e.facing * 0.05;
-    eBobY -= Math.abs(stride) * (e.isBoss ? 0.7 : 1.9);
-    eScaleY -= recoil * 0.06;
-
     ctx.globalAlpha = eAlpha;
     
     // ── 8-DIRECTIONAL ENEMY RENDERING ──
     // Direction-based scaling: narrower when facing toward/away, wider in profile
-    const eDir = e.facingDir ?? 2;
+    const eDir = e.facingDir || 2;
     const eDirScaleX = [0.92, 0.96, 1.0, 0.96, 0.92, 0.96, 1.0, 0.96]; // N/S narrow, E/W full
     const eFlipX = (eDir >= 5 && eDir <= 7);
     const eDirWidth = eDirScaleX[eDir];
     
-    if (img) {
+    const craftPose = FRINGE_CRAFT_ART && !e.stunTimer && enemyCraftPose(e, T);
+    const craftAtlas = form === 'ordinary' ? fringeCraftArt[e.type] : null;
+    if (craftPose && (craftAtlas || fitted)) {
+        const striking = e.state === 'strike_windup' || e.state === 'strike_recover';
+        const aim = worldToScreen(player.x-e.x, player.y-e.y);
+        const walk = e.state === 'approaching' || e.state === 'retreating' || e.state === 'idle';
+        const side = striking ? e.strikeScreenSide : walk && e.type === 'lingering'
+            ? (e.walkScreenSide || Math.sign(aim.x)) : Math.sign(aim.x);
+        ctx.save();
+        ctx.translate(sx, sy);
+        if (side < 0) ctx.scale(-1, 1);
+        if (craftAtlas) drawEnemyCraftFrame(ctx, craftAtlas, e.type, craftPose.frame, spriteH);
+        else drawEnemyCraftForm(ctx, fitted, e.type, craftPose, spriteW, spriteH);
+        ctx.restore();
+    } else if (img) {
         // Burdened has large green platform base — crop 30%; others get 5%
-        const cropFrac = e.type === 'burdened' ? 0.30 : e.isBoss ? 0 : 0.05;
-        const cropBottom = Math.floor(img.height * cropFrac);
-        const srcH = img.height - cropBottom;
         ctx.save();
         ctx.translate(sx + eBobX, sy + eBobY);
         if (eFlipX) ctx.scale(-1, 1);
         ctx.rotate(eLean);
         ctx.scale(Math.abs(eScaleX) * eDirWidth, eScaleY);
-        // Slightly shear successive bands so shoulders, clothing and feet
-        // move with different phases, while the baseline stays planted.
-        const bands = 8;
-        for (let band = 0; band < bands; band++) {
-            const fraction = band / bands;
-            const bandStart = Math.floor(srcH * fraction);
-            const bandEnd = Math.min(srcH, Math.ceil(srcH * (band + 1) / bands) + 1);
-            const offset = (1 - fraction) * (stride * Math.cos(fraction * Math.PI * 2) * 2.5 + recoil * 3.5);
-            ctx.drawImage(img, 0, bandStart, img.width, bandEnd - bandStart,
-                -spriteW / 2 + offset, -spriteH + 5 + spriteH * bandStart / srcH,
-                spriteW, spriteH * (bandEnd - bandStart) / srcH);
-        }
+        const cropType = e.type === 'hollow_warden' ? 'burdened' : e.type;
+        drawEnemySprite(ctx, img, -spriteW / 2, -spriteH + 5, spriteW, spriteH, cropType, Boolean(fitted));
         ctx.restore();
     } else {
         const colors = {
@@ -13269,7 +13971,7 @@ function drawEnemy(ctx, sx, sy, e, cam) {
             ctx.setLineDash([]);
         }
         
-        if (e.state === 'burst_firing') {
+        if (e.state === 'burst_firing' && (!craftPose || craftPose.impact > 0)) {
             // Muzzle flash + intense eye
             ctx.fillStyle = `rgba(200,150,60,${0.6 + Math.random() * 0.3})`;
             ctx.shadowColor = '#c09030';
@@ -13318,142 +14020,6 @@ function drawEnemy(ctx, sx, sy, e, cam) {
     }
     
     ctx.globalAlpha = 1.0;
-}
-
-function renderHaze(cam) {
-    // reduce cost under heavy restraint: early overlay and return
-    try {
-        if (greyline.getSide() === 'restraint' && greyline.getExtremity() > 0.7) {
-            ctx.save();
-            ctx.globalAlpha = 0.4;
-            ctx.fillStyle = 'rgba(40,30,20,1)';
-            ctx.fillRect(0,0,canvas.width,canvas.height);
-            ctx.restore();
-            return;
-        }
-    } catch(e) {}
-    // Track strongest local shadow influence across all pools (used for the global overlay)
-    let maxShadowFactor = 0.0;
-
-    for (const pool of world.hazePools) {
-        const pos = worldToScreen(pool.x, pool.y);
-        const sx = pos.x + cam.x;
-        const sy = pos.y + cam.y;
-
-        const _cvw = canvas.width / camera.zoom, _cvh = canvas.height / camera.zoom;
-        if (sx < -200 || sx > _cvw + 200 || sy < -200 || sy > _cvh + 200) continue;
-
-        const pulse = Math.sin(TIME.percept * 0.55 + pool.pulse) * 0.12;
-        const r = pool.radius * TILE_W * 0.5;
-
-        // --- local shadow influence (per-pool) ---
-        let localShadow = 0.0;
-        // props (small occluders)
-        if (world && world.props) {
-            for (const p of world.props) {
-                const dx = p.x - pool.x, dy = p.y - pool.y;
-                const d = Math.sqrt(dx*dx + dy*dy);
-                const maxD = Math.max(1.0, pool.radius + 3.0);
-                if (d <= maxD) {
-                    const influence = 0.20 * (1 - (d / maxD));
-                    localShadow = Math.max(localShadow, influence);
-                }
-            }
-        }
-        // trees (stronger occlusion)
-        if (world && world.trees) {
-            for (const t of world.trees) {
-                const dx = t.x - pool.x, dy = t.y - pool.y;
-                const d = Math.sqrt(dx*dx + dy*dy);
-                const maxD = Math.max(1.0, pool.radius + 4.0);
-                if (d <= maxD) {
-                    const influence = 0.40 * (1 - (d / maxD));
-                    localShadow = Math.max(localShadow, influence);
-                }
-            }
-        }
-        // structures (broader occluders)
-        if (world && world.structures) {
-            for (const s of world.structures) {
-                const dx = s.x - pool.x, dy = s.y - pool.y;
-                const d = Math.sqrt(dx*dx + dy*dy);
-                const maxD = Math.max(1.0, pool.radius + Math.max(s.w||1, s.h||1) + 2.0);
-                if (d <= maxD) {
-                    const influence = 0.25 * (1 - (d / maxD));
-                    localShadow = Math.max(localShadow, influence);
-                }
-            }
-        }
-        localShadow = clamp01(localShadow * 1.2);
-        maxShadowFactor = Math.max(maxShadowFactor, localShadow);
-
-        // --- pool color/alpha (now respects local shadow influence) ---
-        const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
-        const samT = (greyline.samTier||0)/3;
-        const col = {r:15 + samT*40, g:13 + samT*10, b:11 + samT*55};
-
-        const baseAlpha = (pool.density + pulse) * (0.85 + samT*0.25);
-        const innerAlpha = clamp01(baseAlpha * (1.0 + localShadow * (greyline.knobs?.env?.hazeShadowAlign ?? 0.65)));
-        const midAlpha   = clamp01(baseAlpha * (0.42 + samT*0.18) * (1.0 + localShadow * (greyline.knobs?.env?.hazeShadowAlign ?? 0.65)));
-
-        grad.addColorStop(0, `rgba(${col.r|0},${col.g|0},${col.b|0},${innerAlpha})`);
-        grad.addColorStop(0.6, `rgba(${col.r|0},${col.g|0},${col.b|0},${midAlpha})`);
-        grad.addColorStop(1, 'rgba(15,13,11,0)');
-
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.ellipse(sx, sy, r, r * 0.5, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        // DEV: per-pool debug (shadows/density)
-        if (typeof DEV_VFX_DEBUG !== 'undefined' && DEV_VFX_DEBUG) {
-            ctx.save();
-            ctx.fillStyle = `rgba(255,255,255,${Math.min(0.9, innerAlpha * 1.8)})`;
-            ctx.font = '10px monospace';
-            ctx.fillText(`sh:${localShadow.toFixed(2)} d:${pool.density.toFixed(2)}`, sx - 18, sy - Math.max(8, r * 0.2));
-            ctx.restore();
-        }
-    }
-    
-    const edgeDist = greyline.getDistance();
-    const kVfx = greyline.knobs?.vfx || {};
-    const hazEdge = Math.max(0, Math.min(1, kVfx.hazeEdge ?? (0.1 + edgeDist*0.4)));
-    const samT = (greyline.samTier||0)/3;
-    // Base haze opacity (driven by greyline state)
-    // Increase base haze so pools and global overlay are more perceptible by default
-    const hazeBase = (0.28 + edgeDist * 0.36 + hazEdge * 0.32 + samT * 0.18) * (greyline.knobs?.env?.hazDensity ?? 1.0);
-
-    // Use the strongest pool-local shadow influence to nudge the global top/bottom haze overlay
-    const hazeShadowAlign = greyline.knobs?.env?.hazeShadowAlign ?? 0.65;
-    const shadowFactor = clamp01(maxShadowFactor);
-
-    // Final haze overlay opacity (global) scaled by strongest local occlusion nearby
-    // Strengthen global haze a bit for visibility, but clamp to safe range
-    const hazeOpacity = clamp01(hazeBase * (1.0 + shadowFactor * hazeShadowAlign) * 1.5);
-
-    // DEV: show global shadow factor / alignment (for tuning)
-    if (typeof DEV_VFX_DEBUG !== 'undefined' && DEV_VFX_DEBUG) {
-        ctx.save();
-        ctx.fillStyle = `rgba(255,255,255,${Math.min(0.9, hazeOpacity * 1.8)})`;
-        ctx.font = '10px monospace';
-        ctx.fillText(`shadowMax:${shadowFactor.toFixed(2)} hA:${hazeShadowAlign.toFixed(2)} base:${hazeBase.toFixed(2)}`, 12, 28);
-        ctx.restore();
-    }    
-    // Use zoom-adjusted dimensions since we're inside the zoom transform
-    const zW = canvas.width / camera.zoom;
-    const zH = canvas.height / camera.zoom;
-    
-    const topGrad = ctx.createLinearGradient(0, 0, 0, zH * 0.25);
-    topGrad.addColorStop(0, `rgba(10,9,8,${hazeOpacity})`);
-    topGrad.addColorStop(1, 'rgba(10,9,8,0)');
-    ctx.fillStyle = topGrad;
-    ctx.fillRect(0, 0, zW, zH * 0.25);
-    
-    const botGrad = ctx.createLinearGradient(0, zH * 0.75, 0, zH);
-    botGrad.addColorStop(0, 'rgba(10,9,8,0)');
-    botGrad.addColorStop(1, `rgba(10,9,8,${hazeOpacity})`);
-    ctx.fillStyle = botGrad;
-    ctx.fillRect(0, zH * 0.75, zW, zH * 0.25);
 }
 
 function renderVignette() {
@@ -13814,10 +14380,7 @@ function updateUI() {
     const potionIcon = document.getElementById('potion-icon');
     const potionCount = document.getElementById('potion-count');
     if (potionCount) potionCount.textContent = `${player.potions}/${player.maxPotions}`;
-    if (potionIcon && potionIcon.hidden && loadedImages.uiHealthOrb) {
-        potionIcon.src = ASSETS.uiHealthOrb;
-        potionIcon.hidden = false;
-    }
+    if (potionIcon && loadedImages.uiHealthOrb) potionIcon.src = ASSETS.uiHealthOrb;
     
     // ── GREYLINE EFFECT ON UI LAYOUT ──
     const side = greyline.getSide();
@@ -13984,6 +14547,7 @@ let lastTime = 0;
 let gameStarted = false;
 let inventoryOpen = false;
 let upgradeOpen = false;
+let settingsOverlayOpen = false;
 
 function isPlayerInHub() {
     const hubX = WORLD_SIZE / 2;
@@ -13997,7 +14561,8 @@ function gameLoop(timestamp) {
     
     if (!gameStarted) return;
     if (gameState === GameState.TITLE || gameState === GameState.CONTROLS) return;
-    if (inventoryOpen || upgradeOpen || shopOpen) {
+    if (inventoryOpen || upgradeOpen || shopOpen || settingsOpen || settingsOverlayOpen) {
+        lastTime = timestamp;
         input.clearFrame();
         return;
     }
@@ -14016,10 +14581,31 @@ function gameLoop(timestamp) {
         const scale = greyline.knobs?.timeScale ?? 1.0;
         const simDt = dt * scale;
         greyline.update(simDt, { player, enemies, inventoryOpen, upgradeOpen, shopOpen, xp: xpSystem, inHub: isPlayerInHub() });
+        const event = samsarraEvent.update({
+            g: greyline.g, depth: greyline.sam, tier: greyline.samTier, persist: greyline.persist,
+        }, dt);
+        if (samsarraStatus) {
+            const phase = event.polarity ? `${event.phase} · ${event.polarity}` : event.phase;
+            const label = `Samsarra: ${phase} · Live depth ${Math.floor(greyline.sam * 100)}%`;
+            if (samsarraStatus.textContent !== label) samsarraStatus.textContent = label;
+        }
         // Perceptual time follows real time (using unscaled dt) so visual effects keep in sync
         TIME.percept += dt * scale;
         psychStats.update(simDt);
-        player.update(simDt);
+        const fromX = player.x;
+        const fromY = player.y;
+        const wasDashing = player.dashTimer > 0;
+        player.update(simDt, dt);
+        if (civicStatus) {
+            const label = civicLocation(player.x,player.y);
+            if (civicStatus.textContent !== label) civicStatus.textContent = label;
+        }
+        const dx = wasDashing ? 0 : player.x - fromX;
+        const dy = wasDashing ? 0 : player.y - fromY;
+        const travel = Math.hypot(dx, dy);
+        const fogCrouch = (player._hideInFogTimer || 0) > 2.5 && travel < dt * 0.12;
+        advanceAlizaMotion(player._alizaMotion, dx, dy, dt, !!input.keys.shift || fogCrouch,
+            greyline.getSide() === 'restraint' && travel < dt * player.speed * 0.74);
         inventory.update(simDt);
     }
     
@@ -14053,7 +14639,7 @@ function gameLoop(timestamp) {
         gameState = GameState.EXPLORING;
         
         // ── FIRST EXIT: spawn enemies ──
-        if (!hasExitedHub) {
+        if (!hasExitedHub && !SUBURB_REVIEW) {
             hasExitedHub = true;
             if (!enemiesSpawned) {
                 spawnEnemies();
@@ -14108,7 +14694,7 @@ function gameLoop(timestamp) {
     }
     
     // Respawn — only when exploring
-    if (gameState === GameState.EXPLORING && !dialogueActive) {
+    if (gameState === GameState.EXPLORING && !dialogueActive && !SAMSARRA_REVIEW) {
         const aliveCount = enemies.filter(e => !e.dead).length;
         if (aliveCount < 8 && Math.random() < 0.005) {
             spawnWave();
@@ -14117,7 +14703,7 @@ function gameLoop(timestamp) {
     
     // Audio update
     if (audioEngine && audioEngine.started) {
-        audioEngine.update(dt);
+        audioEngine.update(dt, null, samsarraEvent.snapshot);
     }
     
     // Camera
@@ -14170,20 +14756,47 @@ function spawnWave() {
     
     if (type === 'huddled') {
         for (let i = 0; i < 3; i++) {
-            placeEnemy('huddled',
+            enemies.push(new Enemy('huddled',
                 ex + (Math.random() - 0.5) * 2, 
-                ey + (Math.random() - 0.5) * 2);
+                ey + (Math.random() - 0.5) * 2));
         }
     } else {
-        placeEnemy(type, ex, ey);
+        enemies.push(new Enemy(type, ex, ey));
     }
 }
 
 // ============================================================
 // INITIALIZATION — Title → Controls → Hub → Explore
 // ============================================================
+function installSamsarraReview(panel) {
+    const origin = suburbReview.points[0];
+    const street = suburbReview.layout.cells.filter(cell => cell.role === 'road'
+        && Math.hypot(cell.x - origin.x, cell.y - origin.y) >= 3 && !isBlockedAt(cell.x, cell.y));
+    for (const [type, offsetX, offsetY] of [['lingering', -4, -1], ['watchful', 13, 3]]) {
+        const distance = cell => Math.hypot(cell.x - origin.x - offsetX, cell.y - origin.y - offsetY);
+        const spawn = street.slice().sort((a, b) => distance(a) - distance(b))[0];
+        if (spawn) enemies.push(new Enemy(type, spawn.x, spawn.y));
+    }
+
+    const controls = document.createElement('div');
+    samsarraStatus = document.createElement('span');
+    samsarraStatus.textContent = 'Samsarra: ordinary · Live depth 0%';
+    samsarraStatus.style.marginRight = '.75em';
+    controls.appendChild(samsarraStatus);
+    for (const [label, mode] of [['Compulsion', 'compulsion'], ['Restraint', 'restraint'],
+        ['Release', 'release'], ['Live Greyline', null]]) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = label;
+        button.addEventListener('click', () => samsarraEvent.preview(mode));
+        controls.appendChild(button);
+    }
+    panel.appendChild(controls);
+}
+
 async function init() {
     input.init();
+    installHouseTestMobileControls();
     
     // Start title screen immediately
     gameState = GameState.TITLE;
@@ -14192,43 +14805,28 @@ async function init() {
     // === TITLE SCREEN — click or keypress to proceed (register early so 'begin' works while assets load) ===
     const titleScreen = document.getElementById('title-screen');
     const controlsOverlay = document.getElementById('controls-overlay');
-    let titleMusicStarted = false;
     let titleTransitioning = false;
 
-    function tryStartTitleMusic() {
-        if (titleMusicStarted) return;
-        titleMusicStarted = true;
-        console.log('[Audio] Starting title music on user gesture');
-        ensureAudioUnlocked().then((ok) => {
-            console.log('[Audio] ensureAudioUnlocked ->', ok, 'actx-state:', _actx && _actx.state);
-            if (ok) {
-                initTitleMusic();
-            } else {
-                // fallback: try HTMLAudio beep to detect blocked output
-                try {
-                    const a = new Audio();
-                    a.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA='; // tiny silent WAV (placeholder)
-                    a.play().then(() => { console.warn('[Audio] HTMLAudio fallback beep played (AudioContext blocked)'); if (document.getElementById('audio-status')) document.getElementById('audio-status').innerText = 'Audio: fallback beep played'; }).catch(e => { console.error('[Audio] HTMLAudio fallback failed', e); if (document.getElementById('audio-status')) document.getElementById('audio-status').innerText = 'Audio: blocked'; });
-                } catch (e) { console.error('[Audio] HTMLAudio fallback exception', e); }
-            }
-        });
+    async function tryStartTitleMusic() {
+        if (gameState !== GameState.TITLE) return;
+        stopTitleDemo();
+        const epoch = titleMusicEpoch;
+        if (await ensureAudioUnlocked() && epoch === titleMusicEpoch) initTitleMusic();
     }
 
-    // Allow other UI (sound button) to request title music without advancing the title
     document.addEventListener('title-music-request', tryStartTitleMusic);
     document.addEventListener('title-music-stop', () => {
-        try {
-            if (titleMusicEngine) { titleMusicEngine.fadeOut(); titleMusicEngine = null; }
-        } catch (e) { /* ignore */ }
+        stopTitleMusic();
+        stopTitleDemo();
     });
 
     function handleTitleStart() {
         if (gameState !== GameState.TITLE || titleTransitioning) return;
         titleTransitioning = true;
-        ensureAudioUnlocked();
-        initAudio();
-        if (titleMusicEngine) { titleMusicEngine.fadeOut(); setTimeout(() => { titleMusicEngine = null; }, 4000); }
         gameState = GameState.CONTROLS;
+        stopTitleMusic();
+        stopTitleDemo();
+        ensureAudioUnlocked();
         if (titleScreen) { titleScreen.classList.add('fade'); setTimeout(() => { titleScreen.style.display = 'none'; }, 2500); }
         setTimeout(() => { if (controlsOverlay) controlsOverlay.classList.add('visible'); }, 1500);
     }
@@ -14236,36 +14834,28 @@ async function init() {
     function handleControlsDismiss() {
         if (gameState !== GameState.CONTROLS) return;
         gameState = GameState.HUB;
+        initAudio();
         if (controlsOverlay) { controlsOverlay.classList.add('fade'); setTimeout(() => { controlsOverlay.classList.remove('visible'); controlsOverlay.style.display = 'none'; }, 1500); }
         const uiOverlay = document.getElementById('ui-overlay'); if (uiOverlay) uiOverlay.classList.add('visible');
         const areaName = document.getElementById('area-name'); if (areaName) { setTimeout(() => areaName.classList.add('visible'), 500); setTimeout(() => { areaName.classList.remove('visible'); areaName.classList.add('fade'); }, 4000); }
         gameStarted = true; lastTime = performance.now(); console.log('[Audio] Game started — audioEngine ready:', audioEngine?.started);
     }
 
-    // title demo helpers ------------------------------------------------
     function setupTitleDemoButtons() {
-        const neutral = document.getElementById('demo-neutral');
-        const comp = document.getElementById('demo-compulsion');
-        const rest = document.getElementById('demo-restraint');
-        [neutral, comp, rest].forEach(btn => {
-            if (!btn) return;
-            btn.addEventListener('click', e => {
-                e.stopPropagation();
-                tryStartTitleMusic();
-                if (btn.id === 'demo-neutral') startTitleDemo('neutral');
-                if (btn.id === 'demo-compulsion') startTitleDemo('compulsion');
-                if (btn.id === 'demo-restraint') startTitleDemo('restraint');
+        document.querySelectorAll('[data-greyline-demo]').forEach(button => {
+            button.addEventListener('click', event => {
+                event.stopPropagation();
+                startTitleDemo(button.dataset.greylineDemo);
             });
         });
     }
-    // ----------------------------------------------------------------------
 
     // settings overlay logic
-    let titleMasterGain = null;
     function showSettings() {
         const ov = document.getElementById('settings-overlay');
         if (!ov) return;
         ov.style.display = 'flex';
+        settingsOverlayOpen = true;
         // fill sliders
         document.getElementById('setting-bass').value = audioConfig.hubBassVolume;
         document.getElementById('setting-beat').value = audioConfig.subBassVolume;
@@ -14276,6 +14866,11 @@ async function init() {
         document.getElementById('setting-harmony').value = audioConfig.neutralHarmony;
         document.getElementById('setting-tempo').value = audioConfig.tempoFactor;
         document.getElementById('setting-title').value = audioConfig.titleVolume;
+        const sonorisSlider = document.getElementById('setting-sonoris');
+        if (sonorisSlider) sonorisSlider.value = audioConfig.sonorisVolume;
+        const sonorisStatus = document.getElementById('sonoris-status');
+        if (sonorisStatus) sonorisStatus.textContent = audioEngine?.sonoris?.ready ? 'SONORIS STEMS ACTIVE' :
+            audioEngine?.sonoris?.failed ? 'STEM LOAD FAILED: ' + audioEngine.sonoris.error : 'SONORIS LOADING / AUDIO LOCKED';
         // neutral BPM display
         const nbEl = document.getElementById('setting-neutralbpm');
         if (nbEl) nbEl.value = audioConfig.neutralBpm || 100;
@@ -14286,9 +14881,10 @@ async function init() {
         const ov = document.getElementById('settings-overlay');
         if (!ov) return;
         ov.style.display = 'none';
+        settingsOverlayOpen = false;
     }
     function initSettingsUI() {
-        const sliders = ['bass','beat','melody','pitch','pitchfactor','basswarp','harmony','tempo','title'];
+        const sliders = ['bass','beat','melody','pitch','pitchfactor','basswarp','harmony','tempo','title','sonoris'];
         sliders.forEach(id => {
             const el = document.getElementById('setting-' + id);
             if (!el) return;
@@ -14304,6 +14900,7 @@ async function init() {
                     case 'harmony': audioConfig.neutralHarmony = val; break;
                     case 'tempo': audioConfig.tempoFactor = val; break;
                     case 'title': audioConfig.titleVolume = val; break;
+                    case 'sonoris': audioConfig.sonorisVolume = val; break;
                 }
                 saveAudioConfig();
                 // apply immediately
@@ -14334,7 +14931,7 @@ async function init() {
         const clr = document.getElementById('btn-clear-config');
         if (clr) clr.addEventListener('click', () => {
             localStorage.removeItem('audioConfig');
-            Object.assign(audioConfig, {hubMelodyVolume:1,hubBassVolume:1,pitchWarpStrength:1,bassWarpStrength:1,titleVolume:1});
+            Object.assign(audioConfig, AUDIO_CONFIG_DEFAULTS);
             showSettings();
         });
     }
@@ -14350,17 +14947,115 @@ async function init() {
 
     document.addEventListener('title-start', handleTitleStart);
     document.addEventListener('controls-dismiss', handleControlsDismiss);
-    if (titleScreen) { 
-        titleScreen.addEventListener('click', (e) => { console.log('[Title] screen clicked', e); tryStartTitleMusic(); handleTitleStart(); });
+    if (titleScreen) {
+        const civicLink = document.getElementById('civic-playtest-link');
+        if (civicLink) {
+            civicLink.hidden = CIVIC_REVIEW;
+            civicLink.addEventListener('click', event => event.stopPropagation());
+        }
+        const fringeLink = document.getElementById('fringe-playtest-link');
+        if (fringeLink) {
+            fringeLink.hidden = SAMSARRA_REVIEW && FOUR_HOUSE_FRINGE;
+            fringeLink.addEventListener('click', event => event.stopPropagation());
+        }
+        titleScreen.addEventListener('click', handleTitleStart);
         setupTitleDemoButtons();
         initSettingsUI();
     }
-    window.addEventListener('keydown', function titleKey(e) { if (gameState === GameState.TITLE) { tryStartTitleMusic(); handleTitleStart(); } else if (gameState === GameState.CONTROLS) { handleControlsDismiss(); window.removeEventListener('keydown', titleKey); } });
+    window.addEventListener('keydown', function titleKey(e) { if (gameState === GameState.TITLE) { handleTitleStart(); } else if (gameState === GameState.CONTROLS) { handleControlsDismiss(); window.removeEventListener('keydown', titleKey); } });
 
-    // Load assets in background while title plays
-    await loadImages();
+    // Load the local atlas alongside the existing world assets.
+    const animationReady = loadAlizaAtlas().then(image => { alizaAtlas = image; }).catch(error => {
+        console.warn('Aliza animation atlas could not load. Using legacy sprites.', error);
+    });
+    const craftReady = FRINGE_CRAFT_ART
+        ? loadFringeCraftArt().then(images => { fringeCraftArt = images; }) : null;
+    if (CIVIC_REVIEW) {
+        for (const id of civicAssetIds) ASSETS[id] = `./world-art/civic/${id}.webp`;
+        totalImages = Object.keys(ASSETS).length;
+    }
+    await Promise.all([loadImages(), animationReady, craftReady]);
+    if (HOUSE_VARIANT_REVIEW) {
+        try {
+            const variant = await loadVariant();
+            houseVariantMetadata = variant.metadata;
+            loadedImages.houseA02 = variant.image;
+        } catch (error) {
+            console.error('[A-02 review refused]',error);
+            const notice = document.createElement('div');
+            notice.textContent = 'A-02 review refused: '+error.message;
+            notice.style.cssText = 'position:fixed;top:10px;left:10px;z-index:99999;background:#300;color:white;padding:12px';
+            document.body.appendChild(notice);
+            return;
+        }
+    }
+    createTilePatterns();
     groundAtlas = createGroundAtlas(document, TILE_W, TILE_H);
     world.generate();
+    if (SUBURB_REVIEW) {
+        const panel=document.createElement('div');
+        panel.dataset.fringeControls = '';
+        panel.style.cssText='position:fixed;bottom:10px;left:10px;z-index:99999;background:#211d16;color:#eee;padding:10px;font:14px system-ui';
+        document.body.appendChild(panel);
+        try {
+            const suburb=await import('./world-art/validation/suburb-playtest.mjs?v=samsarra-1');
+            const variant=await loadVariant();
+            suburbReview=await suburb.installSuburbPlaytest({
+                world,structureBounds,variant,variantStructure,loadedImages,isBlockedAt,
+                extraVariants:FOUR_HOUSE_FRINGE
+                    ? await Promise.all(['house.a.03','house.a.04'].map(id=>loadVariant(undefined,id))) : [],
+            });
+            drawSuburbGround=suburb.drawSuburbGround;
+            await loadSamsarraHouses();
+            if (FRINGE_CRAFT_ART) fringeDressing = buildFringeDressing(suburbReview, worldToScreen);
+            fringeHazePools = [...world.hazePools, ...suburbReview.hazePools];
+            Object.assign(player,suburbReview.points[0]);
+            if (CIVIC_REVIEW) {
+                const missing = civicAssetIds.filter(id => !loadedImages[id]);
+                if (missing.length) throw new Error(`Civic Loop assets missing: ${missing.join(', ')}`);
+                prepareCivicTown(world, structureBounds);
+                civicGround = buildCivicGround();
+                if (FRINGE_CRAFT_ART) civicDressing = civicDressingSites.map(mailbox=>
+                    buildFringeDressing({layout:{cells:civicStreetCells},mailbox},worldToScreen)).filter(Boolean);
+                fringeHazePools.push(...civicHazePools);
+                Object.assign(player,civicStart);
+                civicStatus = document.createElement('div');
+                civicStatus.textContent = civicLocation(player.x,player.y);
+                panel.appendChild(civicStatus);
+                for (const {x,y} of huddledPositions) {
+                    const actor = new Enemy('huddled',x,y);
+                    actor.civicHuddle = {form:'ordinary',attack:0,recover:0,stride:0};
+                    enemies.push(actor);
+                }
+            }
+            if (SAMSARRA_REVIEW) installSamsarraReview(panel);
+            if (!CIVIC_REVIEW) {
+                const status=document.createElement('span');
+                status.textContent='Suburb playtest: follow the sidewalk to the A-01 porch. ';
+                panel.appendChild(status);
+                const door=document.createElement('button');
+                door.type='button';
+                door.textContent='Check front door';
+                const interact=()=>{
+                    status.textContent=suburbReview.atDoor(player.x,player.y)
+                        ? 'A-01 front door reached. Walk back to the ramp. '
+                        : 'Walk onto the A-01 porch and stand near the front door. ';
+                };
+                door.addEventListener('click',interact);
+                panel.appendChild(door);
+                window.addEventListener('keydown',e=>{
+                    if (e.key.toLowerCase()==='e' && (gameState===GameState.HUB || gameState===GameState.EXPLORING) && suburbReview.atDoor(player.x,player.y)) interact();
+                });
+            }
+        } catch (error) {
+            panel.textContent='Suburb playtest refused: '+error.message;
+            console.error(error);
+            return;
+        }
+    } else if (HOUSE_VARIANT_REVIEW) {
+        const spawn=reviewLayout(WORLD_SIZE/2,WORLD_SIZE/2).player;
+        player.x=spawn.x;player.y=spawn.y;
+    }
     
     // Audio context will be created on first user gesture
     
@@ -14431,7 +15126,7 @@ async function init() {
     window.addEventListener('keydown', (e) => {
         try {
             if (gameState !== GameState.HUB && gameState !== GameState.EXPLORING) return;
-            if (e.key === 'Shift' || e.key === 'ShiftLeft' || e.key === 'ShiftRight') {
+            if (e.key === 'Shift' && !e.repeat) {
                 if (isPlayerInHaze() && player) {
                     // set to a moderate hide timer so draw logic triggers without maxing restraint
                     player._hideInFogTimer = Math.max(player._hideInFogTimer || 0, 4.0);
@@ -14825,14 +15520,14 @@ let bossEntity = null;
 
 function spawnBoss() {
     if (bossSpawned) return;
+    bossSpawned = true;
     const hubX = WORLD_SIZE / 2, hubY = WORLD_SIZE / 2;
     const angle = Math.PI * 0.25 + (Math.random() - 0.5) * 0.5; // NE-ish
     const dist = 28 + Math.random() * 6;
     const bx = hubX + Math.cos(angle) * dist;
     const by = hubY + Math.sin(angle) * dist;
-    bossEntity = placeEnemy('hollow_warden', bx, by);
-    if (!bossEntity) return;
-    bossSpawned = true;
+    bossEntity = new Enemy('hollow_warden', bx, by);
+    enemies.push(bossEntity);
     camera.addShake(6);
 }
 
@@ -14971,7 +15666,11 @@ function renderMinimap() {
 function renderQuestNotification() {
     if (!questSystem._notification || questSystem._notifTimer <= 0) return;
     const W = canvas.width;
-    const notifY = 60;
+    // Compute visible top so the notification appears inside the cropped view
+    const displayScale = Math.max(window.innerWidth / FIXED_CANVAS_W, window.innerHeight / FIXED_CANVAS_H);
+    const visibleCanvasH = window.innerHeight / displayScale; // in internal canvas pixels
+    const visibleTop = Math.round((canvas.height - visibleCanvasH) / 2);
+    const notifY = visibleTop + 60;
 
     const alpha = Math.min(1, questSystem._notifTimer, questSystem._notifTimer > 3.5 ? (4.5 - questSystem._notifTimer) * 2 : 1);
     ctx.save();
@@ -14992,7 +15691,8 @@ init();
 // Expose a global reset so you can reset the app from console or UI
 window.resetApp = function resetApp(hard = true) {
     console.log('[App] reset requested', hard ? '(hard reload)' : '(soft)');
-    try { if (titleMusicEngine) { titleMusicEngine.fadeOut(); titleMusicEngine = null; } } catch(e){}
+    stopTitleMusic();
+    stopTitleDemo();
     try { if (_actx && typeof _actx.suspend === 'function') _actx.suspend(); } catch(e){}
     if (hard) {
         setTimeout(() => { window.location.reload(); }, 100);
@@ -15035,88 +15735,14 @@ function setupTitleMusicButton(){
             meter.appendChild(fill);
             btn.parentNode && btn.parentNode.insertBefore(meter, audioStatus.nextSibling);
         }
-        let enabled = false; let musicStartAttempts = 0;
-
-        const enableSound = () => {
-            // Ensure audio unlocked then start the title-music engine directly — does not advance the title
-            musicStartAttempts = 0;
-            ensureAudioUnlocked().then((ok) => {
-                const ctx = getAudioCtx();
-                if (audioStatus) audioStatus.innerText = 'Audio: unlocked';
-                // Play a very short, quiet tone to guarantee output is audible (user-gesture confirmed)
-                try {
-                    const g = ctx.createGain();
-                    g.gain.value = 0.6;                      // much louder test beep
-                    g.connect(ctx.destination);
-                    const o = ctx.createOscillator();
-                    o.type = 'sine';
-                    o.frequency.value = 440;
-                    o.connect(g);
-                    o.start();
-                    setTimeout(() => { try { o.stop(); g.disconnect(); } catch(_){} }, 350);
-                    // also play a short burst of white noise for guaranteed audibility
-                    try {
-                        const noiseGain = ctx.createGain();
-                        noiseGain.gain.value = 0.4;
-                        noiseGain.connect(ctx.destination);
-                        const buf = ctx.createBuffer(1, ctx.sampleRate * 0.3, ctx.sampleRate);
-                        const data = buf.getChannelData(0);
-                        for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-                        const src = ctx.createBufferSource();
-                        src.buffer = buf;
-                        src.connect(noiseGain);
-                        src.start();
-                        setTimeout(() => { try { src.stop(); noiseGain.disconnect(); } catch(_){} }, 320);
-                    } catch(e) {}
-                } catch (e) {}
-
-                // Start title music; retry a couple times if the engine wasn't created (some browsers are finicky)
-                function tryStartMusic() {
-                    try { initTitleMusic(); } catch (e) { console.warn('initTitleMusic failed', e); }
-                    musicStartAttempts++;
-                    setTimeout(() => {
-                        if (!titleMusicEngine && musicStartAttempts < 3) {
-                            console.warn('[Audio] retrying title music start', musicStartAttempts);
-                            tryStartMusic();
-                        } else if (!titleMusicEngine) {
-                            console.error('[Audio] title music failed to start after retries');
-                            btn.textContent = 'Sound: Failed';
-                            btn.classList.add('error');
-                            if (audioStatus) audioStatus.innerText = 'Audio: failed to start';
-
-                            // Final audible sanity test (try a tiny oscillator) to help diagnose browser blocks
-                            try {
-                                const ctx2 = getAudioCtx();
-                                const g2 = ctx2.createGain(); g2.gain.value = 0.06; g2.connect(ctx2.destination);
-                                const o2 = ctx2.createOscillator(); o2.type = 'sine'; o2.frequency.value = 660; o2.connect(g2);
-                                o2.start();
-                                setTimeout(() => { try { o2.stop(); g2.disconnect(); if (audioStatus) audioStatus.innerText = 'Audio: beep played (engine failed)'; } catch(_){} }, 180);
-                            } catch (e) {
-                                if (audioStatus) audioStatus.innerText = 'Audio: blocked (no output)';
-                            }
-                        } else {
-                            btn.textContent = 'Sound: On';
-                            btn.classList.remove('error');
-                            btn.classList.add('on');
-                            if (audioStatus) audioStatus.innerText = 'Audio: playing';
-                        }
-                    }, 220);
-                }
-                setTimeout(tryStartMusic, 120);
-            });
-            enabled = true;
-        };
-
-        const disableSound = () => {
-            document.dispatchEvent(new CustomEvent('title-music-stop'));
-            enabled = false;
-            btn.textContent = 'Sound: Off';
-            btn.classList.remove('on');
-        };
-
-        btn.addEventListener('click', (ev) => {
-            ev.stopPropagation(); ev.preventDefault();
-            if (!enabled) enableSound(); else disableSound();
+        let enabled = false;
+        btn.addEventListener('click', event => {
+            event.stopPropagation();
+            event.preventDefault();
+            enabled = !enabled;
+            document.dispatchEvent(new CustomEvent(enabled ? 'title-music-request' : 'title-music-stop'));
+            btn.textContent = enabled ? 'Sound: On' : 'Sound: Off';
+            btn.classList.toggle('on', enabled);
         }, { passive: false });
 
         // Prevent clicks/touches from bubbling to title-start handlers so button doesn't progress the title

@@ -1,0 +1,129 @@
+{
+  "schema": "surround-me-hd-iso-template-dna-v1",
+  "global": {
+    "projection": {
+      "type": "orthographic_isometric",
+      "yawDegrees": 45,
+      "pitchDegrees": 30,
+      "perspectiveDriftAllowed": false
+    },
+    "lighting": {
+      "keyDirection": "northwest-to-southeast",
+      "shadowDirection": "southeast",
+      "fogBakedIntoAssets": false
+    },
+    "world": {
+      "tileSizeM": 2.0,
+      "tileWidthPx": 64,
+      "tileHeightPx": 32,
+      "closestNormalZoom": 2.0625,
+      "alizaReferenceHeightPx": 165.0
+    },
+    "assetRules": {
+      "transparentBackgroundRequired": true,
+      "cleanCornersRequired": true,
+      "fullObjectVisible": true,
+      "bakedStreetForbidden": true,
+      "projectionLocked": true,
+      "anchorLocked": true
+    }
+  },
+  "templates": [
+    {
+      "id": "house.master.a",
+      "class": "building",
+      "label": "Small detached suburban house",
+      "footprintTiles": [3.75, 3.0],
+      "physicalSizeM": [7.5, 6.0],
+      "nominalHeightM": 4.8,
+      "storeys": 1,
+      "anchor": [0.5, 1.0],
+      "referenceDoorHeightM": 2.0,
+      "footprintTolerancePct": 5.0,
+      "allowedVariation": [
+        "siding_material",
+        "paint_colour",
+        "roof_wear",
+        "chimney_presence",
+        "window_damage",
+        "porch_detail",
+        "gutter_damage",
+        "grime_level",
+        "moss_mildew",
+        "decay_state"
+      ],
+      "forbiddenVariation": [
+        "projection",
+        "footprint_class",
+        "storey_count",
+        "anchor",
+        "shadow_direction",
+        "human_scale",
+        "baked_neighbourhood"
+      ]
+    },
+    {
+      "id": "shop.corner.master.a",
+      "class": "building",
+      "label": "Two-storey corner commercial building",
+      "footprintTiles": [3.0, 2.0],
+      "physicalSizeM": [6.0, 4.0],
+      "nominalHeightM": 5.5,
+      "storeys": 2,
+      "anchor": [0.5, 1.0],
+      "referenceDoorHeightM": 2.0,
+      "footprintTolerancePct": 5.0,
+      "allowedVariation": [
+        "business_identity",
+        "signage",
+        "awning",
+        "glazing_damage",
+        "facade_material",
+        "rooftop_hvac",
+        "grime_level",
+        "boarding",
+        "colour_palette",
+        "shopfront_subtype"
+      ],
+      "forbiddenVariation": [
+        "projection",
+        "footprint_class",
+        "storey_count",
+        "anchor",
+        "corner_lot_orientation",
+        "shadow_direction",
+        "human_scale"
+      ]
+    },
+    {
+      "id": "sedan.master.a",
+      "class": "vehicle",
+      "label": "Abandoned mid-size four-door sedan",
+      "footprintTiles": [2.25, 0.9],
+      "physicalSizeM": [4.5, 1.8],
+      "nominalHeightM": 1.5,
+      "storeys": 0,
+      "anchor": [0.5, 1.0],
+      "footprintTolerancePct": 3.0,
+      "allowedVariation": [
+        "paint_colour",
+        "rust_level",
+        "panel_wear",
+        "glass_damage",
+        "hubcap_state",
+        "bumper_damage",
+        "dirt_level",
+        "light_damage",
+        "mild_wreck_state"
+      ],
+      "forbiddenVariation": [
+        "projection",
+        "footprint_class",
+        "vehicle_class",
+        "anchor",
+        "shadow_direction",
+        "human_scale"
+      ]
+    }
+  ]
+}

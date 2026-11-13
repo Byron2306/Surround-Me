@@ -1,0 +1,27 @@
+{
+  "schema": "verge-a01-source-binding-v8",
+  "sourceGeometry": "/data/byron/surround-me-recovery/house-a01-reconstruction/geometry.json",
+  "sourceDetail": "/data/byron/surround-me-recovery/house-a01-reconstruction/detail.json",
+  "widthM": 7.5,
+  "depthM": 6.0,
+  "door": {
+    "facade": "FRONT",
+    "heightM": 2.0,
+    "lateralPosition": 0.32,
+    "name": "front-door",
+    "sillHeightM": 0.0,
+    "widthM": 0.9
+  },
+  "porch": {
+    "boundsM": [
+      2.0,
+      1.0,
+      1.1
+    ],
+    "facade": "FRONT",
+    "style": "OPEN_FRAME"
+  },
+  "coordinateConvention": "runtime-front-positive-y",
+  "coordinateAuthority": "PROVISIONAL",
+  "productionAdmission": "REFUSE"
+}

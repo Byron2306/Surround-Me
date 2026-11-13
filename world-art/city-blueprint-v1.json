@@ -1,0 +1,126 @@
+{
+  "schema": "surround-me-city-blueprint-v1",
+  "name": "The Verge Township",
+  "status": "planning_only_until_phase_a_pass",
+  "designRule": "macro geography guides placement; HD-ISO-V1 assets determine close-camera fidelity",
+  "coordinateSpace": {
+    "type": "normalized-town-plan",
+    "origin": "southwest",
+    "extent": [100, 100]
+  },
+  "boundaries": {
+    "north": "reservoir_and_fog_waterfront",
+    "east": "cemetery_ridge_and_forest",
+    "south": "forest_service_road_and_abandoned_outskirts",
+    "west": "quarry_forest_and_old_institutional_wall"
+  },
+  "districts": [
+    {
+      "id": "district.old_institution",
+      "kind": "institutional",
+      "center": [18, 78],
+      "radius": 12,
+      "character": "large masonry compounds, courtyards, service alleys, perimeter walls",
+      "landmarks": ["landmark.old_institution", "landmark.fire_station"]
+    },
+    {
+      "id": "district.waterfront_civic",
+      "kind": "civic",
+      "center": [49, 76],
+      "radius": 15,
+      "character": "hospital, municipal blocks, waterfront service road, decayed public buildings",
+      "landmarks": ["landmark.hospital", "landmark.waterfront_tower"]
+    },
+    {
+      "id": "district.east_residential",
+      "kind": "residential",
+      "center": [78, 65],
+      "radius": 16,
+      "character": "detached houses, duplexes, church streets, cul-de-sacs, neglected yards",
+      "landmarks": ["landmark.water_tower", "landmark.primary_school"]
+    },
+    {
+      "id": "district.civic_crossroads",
+      "kind": "mixed_civic_commercial",
+      "center": [51, 50],
+      "radius": 14,
+      "character": "broad four-way junctions, pharmacy, grocery, municipal offices, apartments",
+      "landmarks": ["landmark.police_station", "landmark.old_cinema"]
+    },
+    {
+      "id": "district.main_street",
+      "kind": "commercial",
+      "center": [43, 31],
+      "radius": 15,
+      "character": "continuous shopfronts, service alleys, parking, garages, faded signage",
+      "landmarks": ["landmark.pharmacy", "landmark.petrol_station"]
+    },
+    {
+      "id": "district.church_quarter",
+      "kind": "residential_civic",
+      "center": [73, 34],
+      "radius": 13,
+      "character": "older homes, church, cemetery edge, narrow streets, memorial green",
+      "landmarks": ["landmark.church", "landmark.cemetery"]
+    },
+    {
+      "id": "district.industrial_fringe",
+      "kind": "industrial",
+      "center": [20, 27],
+      "radius": 15,
+      "character": "warehouses, workshops, tanks, loading yards, substations, truck access",
+      "landmarks": ["landmark.factory", "landmark.substation"]
+    },
+    {
+      "id": "district.south_outskirts",
+      "kind": "transitional_fringe",
+      "center": [53, 13],
+      "radius": 14,
+      "character": "motel, derelict retail, trailers, scrub, broken road edges, forest encroachment",
+      "landmarks": ["landmark.motel", "landmark.bus_depot"]
+    }
+  ],
+  "corridors": [
+    {
+      "id": "corridor.main_arterial",
+      "from": [11, 44],
+      "to": [89, 55],
+      "role": "primary east-west navigation spine"
+    },
+    {
+      "id": "corridor.civic_spine",
+      "from": [48, 88],
+      "to": [49, 18],
+      "role": "waterfront-to-outskirts north-south route"
+    },
+    {
+      "id": "corridor.main_street_loop",
+      "from": [25, 33],
+      "to": [69, 27],
+      "role": "dense commercial loop with service alleys"
+    },
+    {
+      "id": "corridor.cemetery_approach",
+      "from": [57, 49],
+      "to": [88, 30],
+      "role": "quiet residential descent toward cemetery ridge"
+    }
+  ],
+  "landmarkRules": {
+    "minimumVisibleFromDistricts": 2,
+    "heroLandmarks": [
+      "landmark.hospital",
+      "landmark.water_tower",
+      "landmark.church",
+      "landmark.factory",
+      "landmark.old_institution"
+    ],
+    "navigationPrinciple": "major landmarks create silhouettes and route memory before minimap dependence"
+  },
+  "greylineHooks": {
+    "restraint": "emptier streets, distant fog, severe quiet, hard landmark silhouettes",
+    "flux": "maximum spatial legibility and truthful environmental cues",
+    "compulsion": "denser clutter, harsher lights, peripheral motion and signage instability",
+    "samsarra": "same geography with corrupted facade layers, impossible shadow, repetition and contamination"
+  }
+}

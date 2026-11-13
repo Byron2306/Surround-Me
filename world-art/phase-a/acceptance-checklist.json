@@ -1,0 +1,18 @@
+{
+  "schema": "surround-me-phase-a-acceptance-v1",
+  "phase": "A",
+  "status": "NEEDS_REVIEW",
+  "checks": [
+    {"id":"projection_consistency","state":"NEEDS_REVIEW","evidence":"Golden Four not yet complete on calibration board."},
+    {"id":"aliza_door_car_scale","state":"NEEDS_REVIEW","evidence":"Frozen numeric references exist; visual house/shop/car comparison still required."},
+    {"id":"closest_zoom_texture_readability","state":"NEEDS_REVIEW","evidence":"Requires in-engine 2.0625 zoom inspection with production assets."},
+    {"id":"transparent_edge_quality","state":"NEEDS_REVIEW","evidence":"Recovered house candidate passes automated alpha/corner validation; full kit pending."},
+    {"id":"ground_contact","state":"NEEDS_REVIEW","evidence":"Bottom-contact anchor contract exists; visual placement check pending."},
+    {"id":"depth_sorting","state":"NEEDS_REVIEW","evidence":"Deterministic projected-depth tests exist; in-engine occlusion walk pending."},
+    {"id":"collision_navigation","state":"NEEDS_REVIEW","evidence":"Deterministic collision rectangles pass unit tests; live Aliza navigation pending."},
+    {"id":"road_continuity","state":"NEEDS_REVIEW","evidence":"Directional road grammar recovered; HD four-way master pending."},
+    {"id":"missing_asset_diagnostics","state":"NEEDS_REVIEW","evidence":"Registry refuses unknown/unapproved assets in unit tests; live diagnostic surface pending."},
+    {"id":"fog_layering","state":"NEEDS_REVIEW","evidence":"Dedicated atmosphere layer contract exists; approved fog asset pending."},
+    {"id":"legacy_world_regression","state":"NEEDS_REVIEW","evidence":"Live game.js integration intentionally not altered until full-file safe patching is available."}
+  ]
+}

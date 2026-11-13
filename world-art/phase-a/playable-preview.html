@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Surround Me | Phase A Playable Murder Chamber</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#090b0c;color:#ddd;font:12px/1.4 ui-monospace,monospace}
+canvas{display:block;width:100vw;height:100vh}
+#hud{position:fixed;left:14px;top:14px;z-index:4;padding:10px 12px;background:#08090acc;border:1px solid #ffffff22;max-width:560px}
+#hud strong{color:#f0e5c4}
+#legend{position:fixed;right:14px;bottom:14px;z-index:4;padding:8px 10px;background:#08090acc;border:1px solid #ffffff22;text-align:right}
+</style>
+</head>
+<body>
+<div id="hud"><strong>PHASE A PLAYABLE MURDER CHAMBER</strong><br>loading…</div>
+<div id="legend">WASD / arrows to move<br>R resets spawn<br>candidate/planned geometry remains diagnostic only</div>
+<canvas id="game"></canvas>
+<script src="../hd-iso-v1/calibration.js"></script>
+<script src="../hd-iso-v1/world-object-renderer.js"></script>
+<script src="./scene.js"></script>
+<script src="./player.js"></script>
+<script src="./playable-preview.js"></script>
+</body>
+</html>

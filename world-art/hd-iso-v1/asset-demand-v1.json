@@ -1,0 +1,71 @@
+{
+  "schema": "surround-me-hd-iso-asset-demand-v1",
+  "sourceBlueprint": "The Verge Township",
+  "gate": "NO_BATCH_AFTER_GOLDEN_FOUR_UNTIL_PHASE_A_PASS",
+  "priorityBands": [
+    {
+      "priority": 0,
+      "name": "golden_four",
+      "status": "IN_PROGRESS",
+      "assets": [
+        {"id": "building.house.suburban.01", "count": 1, "state": "missing_isolated_master", "rejectedReference": "reference.house.suburban.lot.01"},
+        {"id": "road.intersection.4way.01", "count": 1, "state": "reproducible_prototype"},
+        {"id": "building.shop.corner.01", "count": 1, "state": "missing_master"},
+        {"id": "vehicle.sedan.01", "count": 1, "state": "missing_master"}
+      ]
+    },
+    {
+      "priority": 1,
+      "name": "one_perfect_block_completion",
+      "status": "LOCKED",
+      "assets": [
+        {"family": "building.residential", "subjects": ["suburban_house_variant_02"], "count": 1},
+        {"family": "building.commercial", "subjects": ["mixed_use_block", "petrol_station_or_garage"], "count": 2},
+        {"family": "vehicle.civilian", "subjects": ["hatchback", "pickup", "van"], "count": 3},
+        {"family": "street_furniture", "subjects": ["traffic_light", "street_light", "stop_sign", "street_name_sign"], "count": 4},
+        {"family": "utility", "subjects": ["power_pole", "transformer_box"], "count": 2},
+        {"family": "clutter", "subjects": ["dumpster", "wheelie_bin", "trash_bags", "cardboard", "pallet", "tyres"], "count": 6},
+        {"family": "vegetation", "subjects": ["weeds", "dead_grass", "hedge", "dead_tree"], "count": 4},
+        {"family": "road_decal", "subjects": ["pothole", "crack_network", "patch_repair", "oil_stain", "drain", "faded_lane_marking"], "count": 6},
+        {"family": "atmosphere", "subjects": ["fog_bank", "low_ground_haze"], "count": 2}
+      ]
+    },
+    {
+      "priority": 2,
+      "name": "residential_pack",
+      "status": "LOCKED",
+      "assets": [
+        {"family": "building.residential", "subjects": ["bungalow", "ranch_house", "two_storey_detached", "duplex", "townhouse", "victorian_house", "prefab_house", "affluent_suburban", "corner_lot_house", "house_with_garage", "house_with_carport", "abandoned_shell"], "count": 12},
+        {"family": "lot_dressing", "subjects": ["garage", "shed", "fence", "gate", "mailbox", "driveway", "porch", "pool", "playground", "rv", "trailer", "satellite_dish"], "count": 12}
+      ]
+    },
+    {
+      "priority": 3,
+      "name": "commercial_pack",
+      "status": "LOCKED",
+      "assets": [
+        {"family": "building.commercial", "subjects": ["grocery", "pharmacy", "convenience_store", "diner", "takeaway", "laundromat", "hardware_shop", "pawn_shop", "motel", "strip_mall", "mechanic", "tyre_shop", "petrol_station", "small_supermarket", "bank", "abandoned_office", "mixed_use_2storey", "department_store_shell"], "count": 18}
+      ]
+    },
+    {
+      "priority": 4,
+      "name": "civic_landmarks",
+      "status": "LOCKED",
+      "assets": [
+        {"family": "building.civic", "subjects": ["police_station", "fire_station", "hospital", "clinic", "school", "church", "cemetery_chapel", "town_hall", "courthouse", "library", "post_office", "community_hall", "water_tower", "radio_tower"], "count": 14}
+      ]
+    },
+    {
+      "priority": 5,
+      "name": "industrial_pack",
+      "status": "LOCKED",
+      "assets": [
+        {"family": "building.industrial", "subjects": ["warehouse", "factory", "machine_shop", "loading_dock", "fuel_depot", "silos", "water_treatment", "electrical_substation", "service_shed"], "count": 9},
+        {"family": "industrial_dressing", "subjects": ["generator", "tank", "pipe_run", "cooling_unit", "stack", "gantry", "shipping_container", "forklift", "industrial_fence"], "count": 9}
+      ]
+    }
+  ],
+  "productionRule": "generate one example, calibrate in-engine, then authorize siblings",
+  "closeCameraRule": "assets must preserve material detail at closestNormalZoom=2.0625 with Aliza≈165 screen px",
+  "massGenerationAllowed": false
+}

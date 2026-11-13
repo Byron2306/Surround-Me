@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "surround-me-hd-iso-geometry-output-v1",
+  "type": "object",
+  "required": ["schemaVersion", "templateId", "structuralSeed", "house"],
+  "properties": {
+    "schemaVersion": {"const": "hd-iso-geometry-v1"},
+    "templateId": {"const": "house.master.a"},
+    "structuralSeed": {"type": "integer"},
+    "house": {
+      "type": "object",
+      "required": ["widthM", "depthM", "maxHeightM", "anchor", "facadeOrientation", "wallHeightM", "roofPitchDegrees", "ridgeAxis", "eaveOverhangM", "door", "windows", "attachments"]
+    }
+  },
+  "additionalProperties": false
+}

@@ -1019,10 +1019,12 @@ FOR <!DOCTYPE html>
             <div id="title-text">Surround Me</div>
             <div id="title-subtitle">neither extreme is evil — both are pathological when fixed</div>
             <div id="title-prompt" onclick="document.dispatchEvent(new CustomEvent('title-start'))">begin</div>
+            <a id="fringe-playtest-link" href="?suburb=1&amp;fringe=4" style="color:#ddd1bb;font-size:13px">Fringe Street playtest</a>
+            <a id="civic-playtest-link" href="?district=civic" style="color:#ddd1bb;font-size:13px">Civic Loop playtest</a>
             <div id="title-demo-buttons">
-                <button id="demo-neutral">Neutral</button>
-                <button id="demo-compulsion">Compulsion</button>
-                <button id="demo-restraint">Restraint</button>
+                <button data-greyline-demo="neutral">Neutral</button>
+                <button data-greyline-demo="compulsion">Compulsion</button>
+                <button data-greyline-demo="restraint">Restraint</button>
             </div>
         </div>
         <div id="title-version">area i — the verge</div>
@@ -1047,11 +1049,13 @@ FOR <!DOCTYPE html>
                 <span id="neutralbpm-value">100</span>
             </div>
             <div class="setting-row"><label>Title Volume</label><input type="range" id="setting-title" min="0" max="2" step="0.01"></div>
+            <div class="setting-row"><label>Sonoris Soundtrack</label><input type="range" id="setting-sonoris" min="0" max="1.2" step="0.01"></div>
+            <div id="sonoris-status" style="font-size:11px;color:#b8aca0;margin:8px 0">SONORIS LOADING / AUDIO LOCKED</div>
             <div class="setting-row"><button id="btn-export-config">Export Config</button> <button id="btn-clear-config">Reset</button></div>
             <div class="setting-row">
-                <button id="demo-neutral">Neutral</button>
-                <button id="demo-compulsion">Compulsion</button>
-                <button id="demo-restraint">Restraint</button>
+                <button data-greyline-demo="neutral">Neutral</button>
+                <button data-greyline-demo="compulsion">Compulsion</button>
+                <button data-greyline-demo="restraint">Restraint</button>
             </div>
         </div>
     </div>
@@ -1059,8 +1063,10 @@ FOR <!DOCTYPE html>
     <!-- CONTROLS OVERLAY -->
     <div id="controls-overlay">
         <div id="controls-title">Controls</div>
-        <div class="control-row"><span class="control-key">W A S D</span><span class="control-desc">Move — direction shapes how the world reads you</span></div>
-        <div class="control-row"><span class="control-key">Left Click</span><span class="control-desc">Attack — action pushes toward compulsion</span></div>
+        <div class="control-row"><span class="control-key">W A S D</span><span class="control-desc">Run — combine keys to move diagonally</span></div>
+        <div class="control-row"><span class="control-key">Hold Shift</span><span class="control-desc">Crouch or crouch-walk with movement</span></div>
+        <div class="control-row"><span class="control-key">Left Click</span><span class="control-desc">Knife attack toward the pointer</span></div>
+        <div class="control-row"><span class="control-key">Right Click</span><span class="control-desc">Fire toward the pointer</span></div>
         <div class="control-row"><span class="control-key">1 / Space / Q</span><span class="control-desc">Predatory Motion — dash through enemies</span></div>
         <div class="control-row"><span class="control-key">2 / E</span><span class="control-desc">Adaptive Snare — traps weaken with repetition</span></div>
         <div class="control-row"><span class="control-key">3 / R</span><span class="control-desc">Reclamation — slow growth, not domination</span></div>
@@ -1113,7 +1119,7 @@ FOR <!DOCTYPE html>
             <div class="skill-slot ready" id="skill-6"><span class="icon">◐</span><span class="key">6</span></div>
             <!-- Potion quickslot (C) -->
             <div class="skill-slot ready" id="potion-slot">
-                <img id="potion-icon" hidden alt="potion" class="potion-img">
+                <img id="potion-icon" src="" alt="potion" class="potion-img">
                 <div class="potion-info">
                     <div class="potion-label">Potion</div>
                     <div id="potion-count" class="potion-count">0/5</div>
@@ -1197,6 +1203,6 @@ FOR <!DOCTYPE html>
     <canvas id="game-canvas"></canvas>
     
     <!-- cache‑bust to avoid stale script causing syntax errors -->
-    <script type="module" src="./game.js?v=verge-streets-1"></script>
+    <script type="module" src="./game.js?v=sonoris-bridge-4-fringe-craft-1-civic-1"></script>
 </body>
 </html>

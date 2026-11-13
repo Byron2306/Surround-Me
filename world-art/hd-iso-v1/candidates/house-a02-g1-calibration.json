@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "hd-iso-donor-footprint-calibration-v2",
+  "variantId": "house.a.02",
+  "source": {
+    "file": "house-a02-g1-donor.png",
+    "width": 1254,
+    "height": 1254,
+    "sha256": "2b00d489c80e22317c066c84d01e0bdf52c630d3ef9fe23f410abf402845634c"
+  },
+  "measurement": {
+    "method": "manual_native_image_measurement",
+    "coordinateOrigin": "top-left",
+    "xAxis": "right",
+    "yAxis": "down"
+  },
+  "contacts": {
+    "rearLeft": {
+      "x": 116,
+      "y": 842,
+      "worldCorner": "x0_yDepth"
+    },
+    "frontLeft": {
+      "x": 552,
+      "y": 1090,
+      "worldCorner": "xWidth_yDepth"
+    },
+    "frontRight": {
+      "x": 1114,
+      "y": 814,
+      "worldCorner": "xWidth_y0"
+    }
+  }
+}

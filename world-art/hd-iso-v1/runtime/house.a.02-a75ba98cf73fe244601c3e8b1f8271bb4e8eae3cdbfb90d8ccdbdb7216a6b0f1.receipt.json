@@ -1,0 +1,66 @@
+{
+  "generativeGovernance": {
+    "cameraHash": "sha256:754dc1d5bec75ea29af7d216c535511d999d882a1576fd3007f2a3f427e027a9",
+    "governedCandidateSha256": "sha256:a75ba98cf73fe244601c3e8b1f8271bb4e8eae3cdbfb90d8ccdbdb7216a6b0f1",
+    "maskManifestSha256": "sha256:025e9156e11253e44a2d5f112268f8c82e41b73aa03cbdc86788200b71bff638",
+    "projectionAdapter": "mirror_x",
+    "renderScale": 4,
+    "schemaVersion": "hd-iso-generative-proof-v1",
+    "status": "PASS"
+  },
+  "hashes": {
+    "contract": "sha256:5d710e6cf8bc24af716adb1b00722c74d805735868148abbe6ad606270006e2d",
+    "detail": "sha256:e27f83f3ecaf51fc7d254ac9e96b8beb71538c5d7709541b370edf37e1261572",
+    "fidelity": "sha256:3803ba1f20b5d5985167a9d89b160ffb76d85cc1e1ad2cc5c661ca176d53bdad",
+    "geometry": "sha256:e44d2f252f522b03bd8d2b101cfc33a4ea00e7265290b2cbf19521005b6a5a2b",
+    "masks": "sha256:025e9156e11253e44a2d5f112268f8c82e41b73aa03cbdc86788200b71bff638",
+    "png": "sha256:a75ba98cf73fe244601c3e8b1f8271bb4e8eae3cdbfb90d8ccdbdb7216a6b0f1",
+    "scene": "sha256:b91ef763e3081edaa3de5b13065135f3a6e854963baa8bbd131315d2f14ad637",
+    "surface": "sha256:6e015415a2f5ec67f9c2c1bc24d78f4e14419c9bcd3d79b4b092e85cb75194a5"
+  },
+  "humanReview": "PENDING",
+  "maskHashes": {
+    "door": "sha256:410bf5ab4204b5bd184cd7b9e84d043d033883d95ffd85e9a9c0c2736efbcd56",
+    "downpipe": "sha256:8aede77d8f494023030c3e894e02a7882e26950267bf4f305551e1f06f7ce40f",
+    "fascia": "sha256:8b873125bfc2c14e7ac750c8dbbea9319a29a0f7a4e79c3dfd2d608c03c85f43",
+    "gutter": "sha256:3b42703a47d6ff56f8a0903fb0ea991f1ae45456c9e16eedf1c5aeb60969fc99",
+    "porch": "sha256:a636b16c7db4d0816b5ab8217e050123d324682e2c7a2095fd0495d0fc411f9d",
+    "roof": "sha256:49bc235dde8150a3100ae68cc39462b5031ef3244d095b03e45d757047f82da8",
+    "silhouette": "sha256:a5234916b5d490e34075f04161bd0d826f606405350c487a063bf926d49b0fc0",
+    "walls": "sha256:f3ecbfc9bdfdeab363b8557fb5eb427a8a1611c3fdd5a40a7a58f5a33e5ff666",
+    "windows": "sha256:1273cf8eb07e5a1c25c97d5226a2ffc0198df45fa2a61d8d2b9fd614ed62e8eb"
+  },
+  "metadata": {
+    "anchorPixelX": 207.99993896484375,
+    "anchorPixelY": 328.0000457763672,
+    "collisionBounds": {
+      "maxX": 1.5,
+      "maxY": 0,
+      "minX": -1.5,
+      "minY": -3.0
+    },
+    "doorApproach": {
+      "x": -0.54,
+      "y": 0.5
+    },
+    "familyId": "house.master.a",
+    "logicalHeight": 512,
+    "logicalWidth": 512,
+    "physicalHeight": 2048,
+    "physicalWidth": 2048,
+    "pngSha256": "sha256:a75ba98cf73fe244601c3e8b1f8271bb4e8eae3cdbfb90d8ccdbdb7216a6b0f1",
+    "schema": "house-variant-runtime-v1",
+    "variantId": "house.a.02"
+  },
+  "reasons": [],
+  "schema": "house-variant-export-v1",
+  "sources": {
+    "contract": "/root/Surround-Me/build/hd-iso/house.a.02/variant-contract.json",
+    "geometry": "/root/Surround-Me/build/hd-iso/house.a.02/geometry.json",
+    "masks": "/root/Surround-Me/build/hd-iso/house.a.02/render/masks/manifest.json",
+    "png": "/root/Surround-Me/build/hd-iso/house.a.02/final.png",
+    "scene": "/root/Surround-Me/build/hd-iso/house.a.02/render/scene-manifest.json"
+  },
+  "status": "PASS",
+  "variantId": "house.a.02"
+}

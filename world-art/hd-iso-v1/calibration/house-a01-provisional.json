@@ -1,0 +1,32 @@
+{
+  "schema": "verge-calibration-asset-v1",
+  "assetId": "house.a.01.provisional",
+  "sourceTemplate": "house.master.a",
+  "sourceType": "procedural_reconstruction",
+  "structuralSeed": 18427,
+  "detailSeed": 4104,
+  "appearanceSeed": 7001,
+  "decaySeed": 9907,
+  "fidelitySeed": 27182,
+  "cameraHash": "sha256:754dc1d5bec75ea29af7d216c535511d999d882a1576fd3007f2a3f427e027a9",
+  "projectionAdapter": "mirror_x",
+  "imageSha256": "sha256:6ba1f9e435c4d18297c227beb70621e1481b667ee49a71a5c79fad2fa4e59fe0",
+  "logicalSize": [
+    512,
+    512
+  ],
+  "physicalSize": [
+    2048,
+    2048
+  ],
+  "anchorPixel": [
+    220,
+    334
+  ],
+  "widthM": 7.5,
+  "depthM": 6.0,
+  "status": "CALIBRATION_ONLY",
+  "visualReview": "PENDING",
+  "productionAdmission": "REFUSE",
+  "originalG18AssetRecovered": false
+}

@@ -1,0 +1,39 @@
+{
+  "schema": "surround-me-house-template-v1",
+  "templateId": "house.master.a",
+  "class": "small_detached_suburban_house",
+  "footprintM": [7.5, 6.0],
+  "footprintTiles": [3.75, 3.0],
+  "maxHeightM": 4.8,
+  "storeys": 1,
+  "anchor": [0.5, 1.0],
+  "facadeOrientation": "FRONT",
+  "wallHeightM": {"min": 2.6, "max": 2.9},
+  "door": {
+    "name": "front-door",
+    "facade": "FRONT",
+    "widthM": 0.9,
+    "heightM": 2.0,
+    "lateralPosition": {"min": 0.28, "max": 0.72}
+  },
+  "roof": {
+    "type": "gable",
+    "pitchDegrees": {"min": 26.0, "max": 38.0},
+    "ridgeAxis": "X",
+    "eaveOverhangM": {"min": 0.25, "max": 0.45}
+  },
+  "windows": {
+    "frontCount": {"min": 1, "max": 3},
+    "sillHeightM": {"min": 0.85, "max": 1.05},
+    "heightM": {"min": 1.1, "max": 1.4},
+    "widthM": {"min": 0.8, "max": 1.5},
+    "minimumCornerClearanceM": 0.45,
+    "minimumOpeningGapM": 0.25
+  },
+  "attachments": {
+    "porch": {
+      "facade": "FRONT",
+      "maxBoundsM": [2.4, 1.2, 1.2]
+    }
+  }
+}
