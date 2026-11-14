@@ -138,9 +138,9 @@ function grit(x,y,i) {
 
 export function buildCivicGround() {
     const chunks=new Map();
-    const chunkAt=(x,y)=>{
-        const cx=Math.floor(x/CHUNK)*CHUNK,cy=Math.floor(y/CHUNK)*CHUNK,k=key(cx,cy);
-        if (!chunks.has(k)) chunks.set(k,{x:cx,y:cy,slabs:[],cells:[]});
+    const chunkAt=(x,y,stage=1)=>{
+        const cx=Math.floor(x/CHUNK)*CHUNK,cy=Math.floor(y/CHUNK)*CHUNK,k=`${stage}:${key(cx,cy)}`;
+        if (!chunks.has(k)) chunks.set(k,{x:cx,y:cy,stage,slabs:[],cells:[]});
         return chunks.get(k);
     };
     const rect=(slabs,x0,y0,x1,y1,fill,material)=>slabs.push({x0,y0,x1,y1,fill,material});
@@ -154,7 +154,7 @@ export function buildCivicGround() {
         }
     }
     for (const {x,y,distance} of verges.values()) {
-        const {slabs}=chunkAt(x,y),inner=distance<=1.5;
+        const {slabs}=chunkAt(x,y,0),inner=distance<=1.5;
         const color=grit(x,y,2)>.5?'61,61,50':'71,65,51';
         rect(slabs,x-.5,y-.5,x+.5,y+.5,`rgba(${color},${inner?.56:.25})`);
         for (let i=0;i<(inner?23:9);i++) {
@@ -202,7 +202,7 @@ export function buildCivicGround() {
         const {slabs}=chunkAt(x,y);
         for (let i=-2;i<=2;i++) rect(slabs,x+i*.15-.06,y-.31,x+i*.15+.06,y+.31,'#aa9876');
     }
-    return [...chunks.values()].map(chunk=>({
+    return [...chunks.values()].sort((a,b)=>a.stage-b.stage).map(chunk=>({
         ...chunk,altered:Object.fromEntries(['restraint','compulsion'].map(side=>
             [side,alteredFringeGround(chunk.slabs,chunk,side)])),
     }));

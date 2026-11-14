@@ -1,7 +1,8 @@
+import {townAssetPaths, buildTownPlan, prepareTownExpansion, buildTownGround, inTownArea, townLocation, drawTownBuilding, prepareHoldfastArt} from './world-art/town-expansion.mjs?v=3';
 import { createGroundAtlas } from './verge-ground.mjs';
 import { civicStart, civicAssetIds, civicLocation, civicHazePools, civicDressingSites,
     civicSigns, civicStreetCells, huddledPositions, prepareCivicTown, buildCivicGround, drawCivicGround,
-    drawCivicLandmark, drawCivicSign, civicHuddledPose, civicStrikeClear } from './world-art/civic-town.mjs?v=1';
+    drawCivicLandmark, drawCivicSign, civicHuddledPose, civicStrikeClear } from './world-art/civic-town.mjs?v=2';
 import { createFringeArtKit } from './world-art/fringe-art-kit-v1/kit-runtime.mjs?v=1';
 import { advanceSamsarraDepth, createSamsarraEvent, samsarraEnemyForm } from './world-art/samsarra-event.mjs?v=2';
 import { createGreylineSonorisDirector, greylinePulseBpm } from './world-art/greyline-sonoris-director.mjs?v=4';
@@ -2950,7 +2951,9 @@ function isOccludedBetween(x1, y1, x2, y2) {
 // World collision test used for player movement blocking. Returns true when (wx,wy)
 // intersects any outside asset that should be impassable (structures, props, trees, fences, wall segments).
 const suburbQuery = new URLSearchParams(window.location.search);
-const CIVIC_REVIEW = suburbQuery.get('district') === 'civic';
+const TOWN_REVIEW = suburbQuery.get('district') === 'town' || (!suburbQuery.has('district') && !suburbQuery.has('suburb') && !suburbQuery.has('fringe'));
+const CIVIC_REVIEW = TOWN_REVIEW || suburbQuery.get('district') === 'civic';
+let townPlan = null;
 const SUBURB_REVIEW = CIVIC_REVIEW || suburbQuery.get('suburb') === '1';
 const FOUR_HOUSE_FRINGE = CIVIC_REVIEW || suburbQuery.get('fringe') === '4';
 const samsarraMode = suburbQuery.get('samsarra');
@@ -5057,7 +5060,7 @@ const player = {
         const block=suburbReview?.area;
         const onFringe=block && this.x>=block.minX && this.x<=block.maxX &&
             this.y>=block.minY && this.y<=block.maxY;
-        if (!onFringe && distSqC > hazeThreshold * hazeThreshold) {
+        if (!onFringe && !(TOWN_REVIEW && inTownArea(this.x,this.y)) && distSqC > hazeThreshold * hazeThreshold) {
             const distFromCenter = Math.sqrt(distSqC);
             const hazeDmg = (distFromCenter - hazeThreshold) * 2 * dt;
             this.health -= hazeDmg;
@@ -9286,7 +9289,7 @@ function render() {
         renderables.push({ type: 'fringe_lamp', y: pos.y, pos });
     }
 
-    if (civicGround) for (const sign of civicSigns) {
+    if (civicGround) for (const sign of [...civicSigns, ...(townPlan?.signs ?? [])]) {
         const pos=worldToScreen(sign.x,sign.y);
         renderables.push({type:'civic_sign',data:sign,y:pos.y,pos});
     }
@@ -12001,6 +12004,10 @@ function drawFringeMailbox(ctx, x, y, event) {
 }
 
 function drawStructure(ctx, sx, sy, s) {
+    if (s.type === 'townBuilding') {
+        drawTownBuilding(ctx,sx,sy,s,loadedImages[s.asset],samsarraEvent.snapshot);
+        return;
+    }
     if (s.type === 'civicLandmark') {
         drawCivicLandmark(ctx, sx, sy, s, loadedImages[s.id], samsarraEvent.snapshot);
         return;
@@ -14597,7 +14604,7 @@ function gameLoop(timestamp) {
         const wasDashing = player.dashTimer > 0;
         player.update(simDt, dt);
         if (civicStatus) {
-            const label = civicLocation(player.x,player.y);
+            const label = (townPlan && townLocation(player.x,player.y)) || civicLocation(player.x,player.y);
             if (civicStatus.textContent !== label) civicStatus.textContent = label;
         }
         const dx = wasDashing ? 0 : player.x - fromX;
@@ -14970,6 +14977,7 @@ async function init() {
     });
     const craftReady = FRINGE_CRAFT_ART
         ? loadFringeCraftArt().then(images => { fringeCraftArt = images; }) : null;
+    if (TOWN_REVIEW) Object.assign(ASSETS,townAssetPaths);
     if (CIVIC_REVIEW) {
         for (const id of civicAssetIds) ASSETS[id] = `./world-art/civic/${id}.webp`;
         totalImages = Object.keys(ASSETS).length;
@@ -15015,10 +15023,17 @@ async function init() {
                 if (missing.length) throw new Error(`Civic Loop assets missing: ${missing.join(', ')}`);
                 prepareCivicTown(world, structureBounds);
                 civicGround = buildCivicGround();
+                if (TOWN_REVIEW) {
+                    const missingTown=Object.keys(townAssetPaths).filter(id=>!loadedImages[id]);
+                    if(missingTown.length) throw new Error('Town art missing: '+missingTown.join(', '));
+                    townPlan=prepareTownExpansion(world,structureBounds,buildTownPlan());
+                    prepareHoldfastArt(world,structureBounds);
+                    civicGround=[...buildTownGround(townPlan),...civicGround].sort((a,b)=>(a.stage??0)-(b.stage??0));
+                }
                 if (FRINGE_CRAFT_ART) civicDressing = civicDressingSites.map(mailbox=>
                     buildFringeDressing({layout:{cells:civicStreetCells},mailbox},worldToScreen)).filter(Boolean);
                 fringeHazePools.push(...civicHazePools);
-                Object.assign(player,civicStart);
+                Object.assign(player,TOWN_REVIEW ? {x:29,y:52} : civicStart);
                 civicStatus = document.createElement('div');
                 civicStatus.textContent = civicLocation(player.x,player.y);
                 panel.appendChild(civicStatus);
