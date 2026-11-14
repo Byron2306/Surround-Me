@@ -1,3 +1,5 @@
+import {houseRoofGeometry, roofGeometryFor, roofWallPolygon, polygon, drawContinuousRoof} from './town-roofs.mjs?v=1';
+export {houseRoofGeometry};
 import {compileStreetLayout} from './street-layout.mjs';
 import {fringeStreetGround, alteredFringeGround} from './validation/fringe-street.mjs';
 
@@ -5,6 +7,9 @@ export const townAssetPaths = {
     townHousePlaster:'./assets/town/house-plaster-v1.webp',
     townHouseBrick:'./assets/town/house-brick-v1.webp',
     townCornerShop:'./assets/town/corner-shop-v1.webp',
+    townPharmacy:'./assets/town/pharmacy-v1.webp',
+    townHardware:'./assets/town/hardware-v1.webp',
+    townLaundrette:'./assets/town/laundrette-v1.webp',
     townChapel:'./assets/town/holdfast-chapel-v1.webp',
     townGrass:'./world-art/fringe-art-kit-v1/art/ground/dead_grass.png',
     townDirt:'./world-art/fringe-art-kit-v1/art/ground/dirt.png',
@@ -45,7 +50,7 @@ export function buildTownPlan() {
     }
     const shops=[65,71,77,83].map((x,i)=>({
         type:'townBuilding',id:`shop-${i+1}`,label:['Corner Grocer','Pharmacy','Hardware','Laundrette'][i],
-        x,y:57.5,w:3,d:2,asset:'townCornerShop',district:'commercial',
+        x,y:57.5,w:3,d:2,asset:['townCornerShop','townPharmacy','townHardware','townLaundrette'][i],district:'commercial',
         spriteAnchor:{x:.65,y:.97},artStatus:'candidate',
         collisionBounds:{minX:-3,maxX:0,minY:-2,maxY:0},
         door:{x:x-1.5,y:58},path:[{x:x-1.5,y:61},{x:x-1.5,y:58}],
@@ -109,6 +114,9 @@ const CONTACTS={
  townHousePlaster:{contact:{x:.598,y:.933},left:{x:.055,y:.853},right:{x:.958,y:.761}},
  townHouseBrick:{contact:{x:.600,y:.894},left:{x:.040,y:.849},right:{x:.960,y:.747}},
  townCornerShop:{contact:{x:.678,y:.969},left:{x:.035,y:.837},right:{x:.960,y:.815}},
+ townPharmacy:{contact:{x:.735,y:.970},left:{x:.055,y:.860},right:{x:.945,y:.830}},
+ townHardware:{contact:{x:.780,y:.810},left:{x:.025,y:.810},right:{x:.975,y:.740}},
+ townLaundrette:{contact:{x:.800,y:.865},left:{x:.025,y:.830},right:{x:.980,y:.740}},
  townChapel:{contact:{x:.526,y:.991},left:{x:.076,y:.942},right:{x:.925,y:.857}},
 };
 export function buildingFaceTransforms(asset,w,d) {
@@ -122,14 +130,18 @@ export function buildingFaceTransforms(asset,w,d) {
 export function drawTownBuilding(ctx,sx,sy,s,image,event) {
  if(!image)return;
  const {contact,left,right}=buildingFaceTransforms(s.asset,s.w,s.d);
- ctx.save();
+ const roof=roofGeometryFor({...s,spriteContactY:contact.y});
+ ctx.save();ctx.translate(sx,sy);
  if(event.polarity==='restraint')ctx.filter=`saturate(${1-event.intensity*.65})`;
  if(event.polarity==='compulsion')ctx.filter=`sepia(${event.intensity*.45})`;
  for(const [side,m]of [['left',left],['right',right]]) {
-  ctx.save();ctx.transform(m.a,m.b,m.c,m.d,sx,sy);
+  ctx.save();
+  if(roof){polygon(ctx,roofWallPolygon(s,side,roof.wallHeight));ctx.clip();}
+  ctx.transform(m.a,m.b,m.c,m.d,0,0);
   ctx.beginPath();ctx.rect(side==='left'?-2:0,-3,2,4);ctx.clip();
   ctx.drawImage(image,-contact.x,-contact.y,1,1);ctx.restore();
  }
+ if(roof)drawContinuousRoof(ctx,s,image,roof);
  ctx.restore();
 }
 const HOLDFAST_LABELS=new Set(['The Holdfast','Dwelling','Storehouse','Archive','Workshop','Hut','Quarters','Armory']);

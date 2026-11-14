@@ -19,3 +19,11 @@ Validation: Node suite passes. Interactive browser validation was blocked by the
 - Existing Holdfast building identities, collision footprints and NPCs are retained. The chapel uses a new realistic sprite; support buildings use the town house/shop candidates. A paved courtyard replaces the old brown floor.
 - Market Street shop parcels move east of the Holdfast to avoid displacing its buildings. All nine original Holdfast structures survive the town installation.
 - 93 Node tests pass. The updated offline overview is checked; interactive verification on the player's local server remains pending.
+
+## Roofs and commercial variety
+
+House gables and the visible roof slope now use deterministic continuous geometry, with source materials mapped onto each complete plane. The facade correction is clipped to the walls, so it cannot kink the ridge or cut a roof through its middle. Shop flat roofs also use one continuous plane.
+
+Market Street now has four distinct exterior assets: the original corner grocer, a sage-brick pharmacy with a cross, a red-brick hardware shop with a roller shutter, and a blue-tiled laundrette with visible washing machines. Collision footprints and street connections are unchanged. New generated sources remain candidates, with runtime derivatives in `assets/town/`.
+
+`roof-shop-review.webp` shows all six house/storefront variants drawn with the actual runtime function. Geometry and registry regression checks bring the Node suite to 95 passing tests. Interactive local gameplay acceptance is still pending.

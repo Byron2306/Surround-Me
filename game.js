@@ -1,4 +1,4 @@
-import {townAssetPaths, buildTownPlan, prepareTownExpansion, buildTownGround, inTownArea, townLocation, drawTownBuilding, prepareHoldfastArt} from './world-art/town-expansion.mjs?v=2';
+import {townAssetPaths, buildTownPlan, prepareTownExpansion, buildTownGround, inTownArea, townLocation, drawTownBuilding, prepareHoldfastArt} from './world-art/town-expansion.mjs?v=3';
 import { createGroundAtlas } from './verge-ground.mjs';
 import { civicStart, civicAssetIds, civicLocation, civicHazePools, civicDressingSites,
     civicSigns, civicStreetCells, huddledPositions, prepareCivicTown, buildCivicGround, drawCivicGround,
