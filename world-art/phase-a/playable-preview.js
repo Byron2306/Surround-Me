@@ -9,7 +9,7 @@
 
   const TILE_W = 64;
   const TILE_H = 32;
-  const ZOOM = 2.0625;
+  let ZOOM = 2.0625;
   const keys = new Set();
   let state = null;
 
@@ -28,17 +28,17 @@
   }
 
   function makeDiagnosticRegistry(manifest) {
-    const records = new Map(manifest.assets.map(record => [record.id, record]));
-    const images = new Map();
+    const registry = new window.SurroundWorldArtRegistry.WorldArtRegistry(manifest, {baseUrl:'../../'});
     return {
-      get(id) { return records.get(id) || null; },
+      get(id) { return registry.get(id); },
       require(id) {
-        const record = records.get(id);
+        const record = registry.get(id);
         if (!record) throw new Error(`diagnostic asset not found: ${id}`);
         return record;
       },
-      attachImage(id, image) { images.set(id, image); return image; },
-      imageFor(id) { return images.get(id) || null; },
+      attachImage(id, image) { return registry.attachImage(id, image); },
+      imageFor(id) { return registry.imageFor(id); },
+      runtimeUrl(id) { return registry.runtimeUrl(id); },
     };
   }
 
@@ -139,9 +139,12 @@
 
   function drawGround(camera) {
     const record = state.registry.require('road.intersection.4way.01');
+    const canonical = state.registry.imageFor(record.id);
     const p = iso(0, 0);
     const width = (record.footprintTiles[0] + record.footprintTiles[1]) * (TILE_W / 2);
-    ctx.drawImage(state.intersection, p.x + camera.x - width * record.anchor[0], p.y + camera.y - width * record.anchor[1], width, width);
+    const height = width * (canonical ? record.runtimePixels[1] / record.runtimePixels[0] : 1);
+    const groundHalfHeight = (record.footprintTiles[0] + record.footprintTiles[1]) * TILE_H / 4;
+    ctx.drawImage(canonical || state.intersection, p.x + camera.x - width * record.anchor[0], p.y + camera.y - height * record.anchor[1] + groundHalfHeight, width, height);
   }
 
   function drawDiagnosticObject(object, camera) {
@@ -205,7 +208,7 @@
 
     hud.innerHTML = `<strong>PHASE A PLAYABLE MURDER CHAMBER</strong><br>` +
       `Aliza x=${state.player.x.toFixed(2)} y=${state.player.y.toFixed(2)} • zoom=${ZOOM} • 64×32 iso<br>` +
-      `house=REFUSE missing isolated master • road=reproducible prototype • shop=REFUSE missing master • sedan=REFUSE missing master<br>` +
+      state.assetResults.map(r => `${r.id}: ${r.state}${r.reason ? ` (${r.reason})` : ''}`).join('<br>') + '<br>' +
       `${state.scene.collisionRects.length} blocking footprints active • old baked house lot is reference-only and is not rendered here`;
   }
 
@@ -229,10 +232,14 @@
       loadImage('../../Aliza1.png'),
     ]);
     const registry = makeDiagnosticRegistry(manifest);
+    const assetResults = await window.SurroundWorldArtLoader.loadSceneAssets(registry,
+      [sceneData.ground, ...sceneData.objects, ...sceneData.atmosphere].filter(Boolean).map(o => o.assetId),
+      loadImage, {candidates:true});
     const loadedScene = sceneApi.loadPhaseABlock(sceneData, registry);
     state = {
       manifest,
       registry,
+      assetResults,
       sceneData,
       scene: loadedScene,
       bounds: sceneData.bounds,
@@ -261,6 +268,9 @@
     const key = event.key.toLowerCase();
     if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(key)) event.preventDefault();
     if (key === 'r' && state) resetPlayer();
+    if (key === '1') ZOOM = 1;
+    if (key === '2') ZOOM = 1.5;
+    if (key === '3') ZOOM = 2.0625;
     keys.add(key);
   });
   window.addEventListener('keyup', event => keys.delete(event.key.toLowerCase()));

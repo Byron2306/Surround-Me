@@ -1,0 +1,10 @@
+{
+  "schema": "surround-me-candidate-receipt-v1",
+  "assetId": "road.intersection.4way.01",
+  "master": "world-art/hd-iso-v1/masters/road_intersection_4way_01.png",
+  "runtime": "world-art/hd-iso-v1/runtime/road_intersection_4way_01.webp",
+  "masterSha256": "2ea6c70256c472de6c045f9f35369f608a1369c6b34655c76f671fbf56d8f64f",
+  "runtimeSha256": "7ce6b69eb69a29d38e1eb7a5f4026bf5c7ca29f1dcab2495321429cc1dc23cda",
+  "status": "candidate",
+  "visualReview": "NEEDS_REVIEW"
+}
