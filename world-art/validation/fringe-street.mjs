@@ -153,7 +153,7 @@ function paintSlabs(ctx,slabs,project,cam,images){
   ctx.save();
   const patterns={};
   const origin=project(0,0);
-  for (const [key,image,span] of [['asphalt',images.groundAsphalt,3],['concrete',images.groundConcrete,2]]) {
+  for (const [key,image,span] of [['asphalt',images.groundAsphalt,3],['concrete',images.groundConcrete,2],['dead_grass',images.townGrass,2],['dirt',images.townDirt,2]]) {
     if (!image) continue;
     const pattern=ctx.createPattern(image,'repeat');
     if (!pattern) continue;
@@ -175,7 +175,7 @@ function paintSlabs(ctx,slabs,project,cam,images){
     ctx.fill();
     if (patterns[material]) {
       ctx.save();
-      ctx.globalAlpha *= .12;
+      ctx.globalAlpha *= material==='dead_grass'||material==='dirt' ? .42 : .12;
       ctx.fillStyle = patterns[material];
       ctx.fill();
       ctx.restore();
