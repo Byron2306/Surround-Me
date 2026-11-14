@@ -11,3 +11,11 @@ The default entry and `?district=town` load the expansion, retain the existing C
 - `overview.webp` is an offline overview rendered from the expansion's ground and building functions; it is not an interactive gameplay screenshot.
 
 Validation: Node suite passes. Interactive browser validation was blocked by the preview environment: local Chromium failed on a restricted Unix socket and the shared browser could not reach the local server. Camera conformance, final physical scale and human visual acceptance remain pending. This branch has not been deployed to GitHub Pages.
+
+## Rendering correction
+
+- Ground chunks now paint terrain before streets across the entire town and Civic Loop. This removes grass strips that previously overwrote roads at eight-tile chunk boundaries.
+- House, shop and chapel facades use measured source contact points and separate affine facade transforms to align their base edges with the 64x32 world projection while keeping walls vertical. This is a renderer correction; it does not confer final canonical art approval.
+- Existing Holdfast building identities, collision footprints and NPCs are retained. The chapel uses a new realistic sprite; support buildings use the town house/shop candidates. A paved courtyard replaces the old brown floor.
+- Market Street shop parcels move east of the Holdfast to avoid displacing its buildings. All nine original Holdfast structures survive the town installation.
+- 93 Node tests pass. The updated offline overview is checked; interactive verification on the player's local server remains pending.

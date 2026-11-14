@@ -1,8 +1,8 @@
-import {townAssetPaths, buildTownPlan, prepareTownExpansion, buildTownGround, inTownArea, townLocation, drawTownBuilding} from './world-art/town-expansion.mjs?v=1';
+import {townAssetPaths, buildTownPlan, prepareTownExpansion, buildTownGround, inTownArea, townLocation, drawTownBuilding, prepareHoldfastArt} from './world-art/town-expansion.mjs?v=2';
 import { createGroundAtlas } from './verge-ground.mjs';
 import { civicStart, civicAssetIds, civicLocation, civicHazePools, civicDressingSites,
     civicSigns, civicStreetCells, huddledPositions, prepareCivicTown, buildCivicGround, drawCivicGround,
-    drawCivicLandmark, drawCivicSign, civicHuddledPose, civicStrikeClear } from './world-art/civic-town.mjs?v=1';
+    drawCivicLandmark, drawCivicSign, civicHuddledPose, civicStrikeClear } from './world-art/civic-town.mjs?v=2';
 import { createFringeArtKit } from './world-art/fringe-art-kit-v1/kit-runtime.mjs?v=1';
 import { advanceSamsarraDepth, createSamsarraEvent, samsarraEnemyForm } from './world-art/samsarra-event.mjs?v=2';
 import { createGreylineSonorisDirector, greylinePulseBpm } from './world-art/greyline-sonoris-director.mjs?v=4';
@@ -15027,7 +15027,8 @@ async function init() {
                     const missingTown=Object.keys(townAssetPaths).filter(id=>!loadedImages[id]);
                     if(missingTown.length) throw new Error('Town art missing: '+missingTown.join(', '));
                     townPlan=prepareTownExpansion(world,structureBounds,buildTownPlan());
-                    civicGround=[...buildTownGround(townPlan),...civicGround];
+                    prepareHoldfastArt(world,structureBounds);
+                    civicGround=[...buildTownGround(townPlan),...civicGround].sort((a,b)=>(a.stage??0)-(b.stage??0));
                 }
                 if (FRINGE_CRAFT_ART) civicDressing = civicDressingSites.map(mailbox=>
                     buildFringeDressing({layout:{cells:civicStreetCells},mailbox},worldToScreen)).filter(Boolean);
